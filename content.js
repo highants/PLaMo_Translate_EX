@@ -175,12 +175,10 @@
             ${langOptionsHtml}
           </select>
           <select class="plamo-ext-select plamo-ext-card-form" title="日本語の文体 (丁寧語: です・ます / 常体: だ・である)" style="${targetLang === 'ja' ? '' : 'display:none;'}">
-            <option value="none" ${form === 'none' ? 'selected' : ''}>文体:標準</option>
+            <option value="none" ${form === 'none' ? 'selected' : ''}>標準</option>
             <option value="polite" ${form === 'polite' ? 'selected' : ''}>丁寧語</option>
             <option value="plain" ${form === 'plain' ? 'selected' : ''}>常体</option>
           </select>
-          <button class="plamo-ext-btn-icon plamo-ext-card-reload" title="再翻訳">🔄</button>
-          <button class="plamo-ext-btn-icon plamo-ext-card-close" title="閉じる">×</button>
         </div>
       </div>
       <div class="plamo-ext-card-body">
@@ -193,6 +191,7 @@
         <span class="plamo-ext-card-status" style="font-size:11px; color:#64748b;">LM Studio</span>
         <div class="plamo-ext-footer-actions">
           ${selectionData.isEditable ? '<button class="plamo-ext-btn plamo-ext-card-replace">✍️ 置換</button>' : ''}
+          <button class="plamo-ext-btn plamo-ext-card-reload" title="再翻訳">🔄 再翻訳</button>
           <button class="plamo-ext-btn plamo-ext-btn-primary plamo-ext-card-copy">📋 コピー</button>
         </div>
       </div>
@@ -226,9 +225,6 @@
     popoverCardEl.addEventListener('mouseup', (e) => e.stopPropagation());
 
     // Wire events
-    const closeBtn = popoverCardEl.querySelector('.plamo-ext-card-close');
-    closeBtn.addEventListener('click', removePopoverCard);
-
     const targetSelect = popoverCardEl.querySelector('.plamo-ext-card-target-lang');
     const formSelect = popoverCardEl.querySelector('.plamo-ext-card-form');
     const reloadBtn = popoverCardEl.querySelector('.plamo-ext-card-reload');

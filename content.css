@@ -139,11 +139,11 @@
 }
 
 .plamo-ext-card-target-lang {
-  max-width: 115px;
+  max-width: 140px;
 }
 
 .plamo-ext-card-form {
-  max-width: 85px;
+  max-width: 95px;
 }
 
 @media (prefers-color-scheme: dark) {
