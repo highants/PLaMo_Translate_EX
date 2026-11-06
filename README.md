@@ -1,5 +1,7 @@
 # PLaMo Translate (LM Studio)
 
+[English](README.en.md) | 日本語
+
 Preferred Networks (PFN) がオープンウェイトとして公開した、世界最高水準の翻訳特化型大規模言語モデル **「PLaMo 3 Translate」ファミリー（0.8B / 2B / 8B / 31B）** を、**LM Studio** のローカル推論サーバー経由でブラウザから直接利用できる Chrome 拡張機能 (Manifest V3 / Vanilla JS) です。
 
 外部の有償クラウド翻訳 API（Google Cloud Translation, DeepL 等）へのデータ送信を一切行わず、**完全ローカル環境で機密データや社内ドキュメントを安全・高速・無制限に翻訳**できます。
@@ -137,6 +139,7 @@ PLaMo 3 Translate が公式対応している 53 言語すべてに対応して�
 
 | 項目 | デフォルト | 説明 |
 | :--- | :--- | :--- |
+| **UI 言語** | `自動` | インターフェース表示言語（`自動 (ブラウザ依存)` / `日本語` / `英語`） |
 | **LM Studio サーバー URL** | `http://localhost:1234` | 推論サーバーの URL（リモートホストも指定可） |
 | **使用モデル** | 自動検出 | `/v1/models` で取得されたモデル一覧から選択、または手動入力 |
 | **API 呼び出しモード** | `completions` (推奨) | `/v1/completions` または `/v1/chat/completions` |

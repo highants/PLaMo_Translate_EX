@@ -15,55 +15,55 @@
       <div class="brand">
         <img src="icons/icon48.png" alt="PLaMo" class="brand-icon">
         <div class="brand-text">
-          <span class="brand-title">PLaMo Translate</span>
-          <span class="brand-subtitle">pfnet/plamo-3-translate</span>
+          <span class="brand-title" data-i18n="brandTitle">PLaMo Translate</span>
+          <span class="brand-subtitle" data-i18n="brandSubtitle">pfnet/plamo-3-translate</span>
         </div>
       </div>
 
       <div class="header-status">
         <span id="connectionDot" class="status-dot disconnected" title="LM Studio 接続ステータス"></span>
-        <span id="connectionStatus" class="status-text">未接続</span>
+        <span id="connectionStatus" class="status-text" data-i18n="statusDisconnected">未接続</span>
       </div>
 
       <div class="header-actions">
-        <button id="btnOpenTab" class="icon-button" title="タブで全画面表示">🗗</button>
-        <button id="btnToggleSettings" class="icon-button" title="設定を開く">⚙️</button>
+        <button id="btnOpenTab" class="icon-button" data-i18n-title="btnOpenTab" title="タブで全画面表示">🗗</button>
+        <button id="btnToggleSettings" class="icon-button" data-i18n-title="btnToggleSettings" title="設定を開く">⚙️</button>
       </div>
     </header>
 
     <!-- Quick Tools Bar -->
     <section class="quick-tools-bar">
-      <button id="btnGrabSelection" class="btn-tool" title="閲覧中タブの選択テキストを取得して翻訳">
-        <span>📥</span> 選択テキストを取得
+      <button id="btnGrabSelection" class="btn-tool" data-i18n-title="btnGrabSelectionTitle" title="閲覧中タブの選択テキストを取得して翻訳">
+        <span>📥</span> <span data-i18n="btnGrabSelection">選択テキストを取得</span>
       </button>
-      <button id="btnPageTranslate" class="btn-tool" title="閲覧中タブのWebページ全体を翻訳">
-        <span>🌐</span> ページ全体を翻訳
+      <button id="btnPageTranslate" class="btn-tool" data-i18n-title="btnPageTranslateTitle" title="閲覧中タブのWebページ全体を翻訳">
+        <span>🌐</span> <span data-i18n="btnPageTranslate">ページ全体を翻訳</span>
       </button>
     </section>
 
     <!-- Language & Style Bar -->
     <section class="lang-controls-bar">
       <div class="lang-select-group">
-        <label for="sourceLangSelect">原文</label>
+        <label for="sourceLangSelect" data-i18n="labelSourceLang">原文</label>
         <select id="sourceLangSelect" class="lang-select">
-          <option value="auto">🌐 自動検出</option>
+          <option value="auto" data-i18n="optAutoDetect">🌐 自動検出</option>
         </select>
       </div>
 
-      <button id="btnSwapLang" class="btn-swap" title="言語を入れ替え">⇄</button>
+      <button id="btnSwapLang" class="btn-swap" data-i18n-title="btnSwapLang" title="言語を入れ替え">⇄</button>
 
       <div class="lang-select-group">
-        <label for="targetLangSelect">訳文</label>
+        <label for="targetLangSelect" data-i18n="labelTargetLang">訳文</label>
         <select id="targetLangSelect" class="lang-select">
         </select>
       </div>
 
       <div id="formGroup" class="lang-select-group form-select-group">
-        <label for="formSelect">文体 (敬体/常体)</label>
-        <select id="formSelect" class="lang-select">
-          <option value="none">指定なし</option>
-          <option value="polite">丁寧 (です・ます)</option>
-          <option value="plain">常体 (だ・である)</option>
+        <label for="formSelect" data-i18n="labelForm">文体 (敬体/常体)</label>
+        <select id="formSelect" class="lang-select" data-i18n-title="formTitleTooltip">
+          <option value="none" data-i18n="formNone">指定なし</option>
+          <option value="polite" data-i18n="formPolite">丁寧 (です・ます)</option>
+          <option value="plain" data-i18n="formPlain">常体 (だ・である)</option>
         </select>
       </div>
     </section>
@@ -73,28 +73,28 @@
       <!-- Input Card -->
       <div class="card card-input">
         <div class="card-header">
-          <span class="card-title">原文テキスト</span>
+          <span class="card-title" data-i18n="inputCardTitle">原文テキスト</span>
           <div class="card-header-actions">
             <span id="charCount" class="char-count">0 文字</span>
-            <button id="btnClearInput" class="btn-text-sm" title="入力をクリア">クリア</button>
+            <button id="btnClearInput" class="btn-text-sm" data-i18n="btnClear" title="入力をクリア">クリア</button>
           </div>
         </div>
         <div class="card-body">
-          <textarea id="inputText" class="translation-textarea" placeholder="翻訳したいテキストを入力... (Ctrl + Enter で翻訳)"
+          <textarea id="inputText" class="translation-textarea" data-i18n-placeholder="inputPlaceholder" placeholder="翻訳したいテキストを入力... (Ctrl + Enter で翻訳)"
             rows="5"></textarea>
         </div>
         <div class="card-footer">
           <!-- Collapsible Context & Glossary -->
           <details class="plamo-details">
-            <summary class="details-summary">🛠️ コンテキスト & 用語集 (Glossary)</summary>
+            <summary class="details-summary" data-i18n="detailsContextGlossary">🛠️ コンテキスト & 用語集 (Glossary)</summary>
             <div class="details-body">
               <div class="field-group">
-                <label for="contextInput">コンテキスト (Context)</label>
-                <input type="text" id="contextInput" placeholder="例: ソフトウェア開発の技術ドキュメント" class="text-input">
+                <label for="contextInput" data-i18n="labelContext">コンテキスト (Context)</label>
+                <input type="text" id="contextInput" data-i18n-placeholder="placeholderContext" placeholder="例: ソフトウェア開発の技術ドキュメント" class="text-input">
               </div>
               <div class="field-group">
-                <label for="glossaryInput">用語集 (Glossary - 1行に1組: 原文=訳語)</label>
-                <textarea id="glossaryInput" placeholder="例:&#10;LLM=大規模言語モデル&#10;Prompt=プロンプト&#10;repository=リポジトリ"
+                <label for="glossaryInput" data-i18n="labelGlossary">用語集 (Glossary - 1行に1組: 原文=訳語)</label>
+                <textarea id="glossaryInput" data-i18n-placeholder="placeholderGlossary" placeholder="例:&#10;LLM=大規模言語モデル&#10;Prompt=プロンプト&#10;repository=リポジトリ"
                   rows="3" class="text-input font-mono"></textarea>
               </div>
             </div>
@@ -102,7 +102,7 @@
 
           <button id="btnTranslate" class="btn-primary">
             <span class="btn-icon">⚡</span>
-            <span>翻訳する (Ctrl+Enter)</span>
+            <span data-i18n="btnTranslate">翻訳する (Ctrl+Enter)</span>
           </button>
         </div>
       </div>
@@ -111,31 +111,31 @@
       <div class="card card-output">
         <div class="card-header">
           <div class="output-header-left">
-            <span class="card-title">訳文</span>
+            <span class="card-title" data-i18n="outputCardTitle">訳文</span>
             <span id="effectiveTargetBadge" class="badge badge-lang" style="display:none;">ja</span>
             <span id="modelUsedBadge" class="badge badge-model" style="display:none;">PLaMo-3</span>
           </div>
           <div class="card-header-actions">
-            <button id="btnCopyOutput" class="btn-text-sm" title="訳文をコピー">📋 コピー</button>
-            <button id="btnClearOutput" class="btn-text-sm" title="訳文をクリア">クリア</button>
+            <button id="btnCopyOutput" class="btn-text-sm" data-i18n="btnCopy" title="訳文をコピー">📋 コピー</button>
+            <button id="btnClearOutput" class="btn-text-sm" data-i18n="btnClear" title="訳文をクリア">クリア</button>
           </div>
         </div>
         <div class="card-body">
           <!-- Loading State -->
           <div id="outputLoading" class="loading-state" style="display: none;">
             <div class="spinner"></div>
-            <span>PLaMo-3 でローカル翻訳中...</span>
+            <span data-i18n="loadingText">PLaMo でローカル翻訳中...</span>
           </div>
 
           <!-- Error State -->
           <div id="outputError" class="error-state" style="display: none;">
-            <div class="error-title">⚠️ 翻訳エラーが発生しました</div>
+            <div class="error-title" data-i18n="errorTitle">⚠️ 翻訳エラーが発生しました</div>
             <div id="outputErrorText" class="error-msg"></div>
-            <div class="error-hint">LM Studio サーバーが起動し、plamo-3-translate がロードされているか確認してください。</div>
+            <div class="error-hint" data-i18n="errorHint">LM Studio サーバーが起動し、plamo-3-translate がロードされているか確認してください。</div>
           </div>
 
           <!-- Empty placeholder -->
-          <div id="outputPlaceholder" class="empty-placeholder">
+          <div id="outputPlaceholder" class="empty-placeholder" data-i18n="outputPlaceholder">
             ここに翻訳結果が表示されます
           </div>
 
@@ -144,7 +144,7 @@
         </div>
         <div class="card-footer output-footer">
           <details id="promptDetails" class="plamo-details prompt-details">
-            <summary class="details-summary">🔍 送信された PFML3 プロンプトを確認</summary>
+            <summary class="details-summary" data-i18n="promptDetailsTitle">🔍 送信された PFML3 プロンプトを確認</summary>
             <pre id="promptPreview" class="prompt-preview"></pre>
           </details>
         </div>
@@ -154,49 +154,60 @@
     <!-- Collapsible Settings Panel -->
     <section id="settingsPanel" class="settings-panel" style="display: none;">
       <div class="settings-header">
-        <h2 class="settings-title">⚙️ 拡張機能設定</h2>
-        <button id="btnCloseSettings" class="icon-button" title="設定を閉じる">×</button>
+        <h2 class="settings-title" data-i18n="settingsTitle">⚙️ 拡張機能設定</h2>
+        <button id="btnCloseSettings" class="icon-button" data-i18n-title="btnCloseSettings" title="設定を閉じる">×</button>
       </div>
 
       <div class="settings-content">
+        <!-- UI Language Selection -->
+        <div class="setting-item">
+          <label for="settingUiLang" data-i18n="labelUiLang">UI 言語 (Interface Language)</label>
+          <select id="settingUiLang" class="select-input">
+            <option value="auto" data-i18n="optUiLangAuto">自動 (ブラウザ依存 / Auto)</option>
+            <option value="ja" data-i18n="optUiLangJa">日本語 (Japanese)</option>
+            <option value="en" data-i18n="optUiLangEn">English (英語)</option>
+          </select>
+          <span class="setting-desc" data-i18n="descUiLang">ポップアップや画面内翻訳カードの表示言語を切り替えます</span>
+        </div>
+
         <!-- LM Studio Server URL -->
         <div class="setting-item">
-          <label for="settingBaseUrl">LM Studio サーバー URL</label>
+          <label for="settingBaseUrl" data-i18n="labelBaseUrl">LM Studio サーバー URL</label>
           <div class="input-with-button">
             <input type="text" id="settingBaseUrl" value="http://localhost:1234" class="text-input">
-            <button id="btnTestConnection" class="btn-secondary">🔌 接続テスト</button>
+            <button id="btnTestConnection" class="btn-secondary" data-i18n="btnTestConnection">🔌 接続テスト</button>
           </div>
-          <span class="setting-desc">LM Studio の Local Server (デフォルトポート 1234)</span>
+          <span class="setting-desc" data-i18n="descBaseUrl">LM Studio の Local Server (デフォルトポート 1234)</span>
         </div>
 
         <!-- Model Selection -->
         <div class="setting-item">
-          <label for="settingModel">使用モデル</label>
+          <label for="settingModel" data-i18n="labelModel">使用モデル</label>
           <select id="settingModel" class="select-input">
-            <option value="">(ロード済みモデルを自動検出)</option>
+            <option value="" data-i18n="optModelAuto">(ロード済みモデルを自動検出)</option>
           </select>
-          <input type="text" id="settingModelCustom" placeholder="モデル識別名を手動入力..." class="text-input"
+          <input type="text" id="settingModelCustom" data-i18n-placeholder="placeholderModelCustom" placeholder="モデル識別名を手動入力..." class="text-input"
             style="margin-top: 6px; display: none;">
-          <span class="setting-desc">LM Studio にロードされているモデルを選択または手動指定</span>
+          <span class="setting-desc" data-i18n="descModel">LM Studio にロードされているモデルを選択または手動指定</span>
         </div>
 
         <!-- API Mode -->
         <div class="setting-item">
-          <label for="settingApiMode">API 呼び出しモード</label>
+          <label for="settingApiMode" data-i18n="labelApiMode">API 呼び出しモード</label>
           <select id="settingApiMode" class="select-input">
-            <option value="completions">Completions API (/v1/completions) - PFML3推奨</option>
-            <option value="chat">Chat API (/v1/chat/completions)</option>
+            <option value="completions" data-i18n="optApiModeCompletions">Completions API (/v1/completions) - PFML3推奨</option>
+            <option value="chat" data-i18n="optApiModeChat">Chat API (/v1/chat/completions)</option>
           </select>
-          <span class="setting-desc">PLaMo 3 Translate は PFML3 形式の Completions 呼び出しで最も高い精度を発揮します</span>
+          <span class="setting-desc" data-i18n="descApiMode">PLaMo 3 Translate は PFML3 形式の Completions 呼び出しで最も高い精度を発揮します</span>
         </div>
 
         <!-- In-Page Selection Popup Mode -->
         <div class="setting-item">
-          <label for="settingSelectionMode">Webページ内での選択テキスト翻訳</label>
+          <label for="settingSelectionMode" data-i18n="labelSelectionMode">Webページ内での選択テキスト翻訳</label>
           <select id="settingSelectionMode" class="select-input">
-            <option value="button">アイコンボタンを表示 (クリックで翻訳カードを開く)</option>
-            <option value="instant">選択時に即座に翻訳カードを開く</option>
-            <option value="off">無効 (右クリックメニューまたはポップアップから翻訳)</option>
+            <option value="button" data-i18n="optSelectionModeButton">アイコンボタンを表示 (クリックで翻訳カードを開く)</option>
+            <option value="instant" data-i18n="optSelectionModeInstant">選択時に即座に翻訳カードを開く</option>
+            <option value="off" data-i18n="optSelectionModeOff">無効 (右クリックメニューまたはポップアップから翻訳)</option>
           </select>
         </div>
 
@@ -204,29 +215,29 @@
         <div class="setting-item">
           <label class="checkbox-label">
             <input type="checkbox" id="settingAutoSwitchJaEn" checked>
-            <span>日本語を入力した時は自動的に英語へ翻訳する</span>
+            <span data-i18n="labelAutoSwitchJaEn">日本語を入力した時は自動的に英語へ翻訳する</span>
           </label>
-          <span class="setting-desc">翻訳先が「日本語」の状態で日本語を入力した場合、自動で英語に反転します</span>
+          <span class="setting-desc" data-i18n="descAutoSwitchJaEn">翻訳先が「日本語」の状態で日本語を入力した場合、自動で英語に反転します</span>
         </div>
 
         <!-- Temperature & Max Tokens -->
         <div class="setting-row">
           <div class="setting-col">
-            <label for="settingTemperature">Temperature (温度)</label>
+            <label for="settingTemperature" data-i18n="labelTemperature">Temperature (温度)</label>
             <input type="number" id="settingTemperature" min="0" max="1" step="0.1" value="0" class="text-input">
-            <span class="setting-desc">0: 最も確定的・一貫</span>
+            <span class="setting-desc" data-i18n="descTemperature">0: 最も確定的・一貫</span>
           </div>
           <div class="setting-col">
-            <label for="settingMaxTokens">Max Tokens</label>
+            <label for="settingMaxTokens" data-i18n="labelMaxTokens">Max Tokens</label>
             <input type="number" id="settingMaxTokens" min="64" max="8192" step="64" value="1024" class="text-input">
-            <span class="setting-desc">最大生成トークン数</span>
+            <span class="setting-desc" data-i18n="descMaxTokens">最大生成トークン数</span>
           </div>
         </div>
 
         <!-- Save Button & Feedback -->
         <div class="settings-actions">
-          <button id="btnSaveSettings" class="btn-primary">設定を保存</button>
-          <span id="settingsSaveStatus" class="save-status" style="display: none;">✓ 保存しました</span>
+          <button id="btnSaveSettings" class="btn-primary" data-i18n="btnSaveSettings">設定を保存</button>
+          <span id="settingsSaveStatus" class="save-status" data-i18n="saveStatusSuccess" style="display: none;">✓ 保存しました</span>
         </div>
       </div>
     </section>
@@ -238,6 +249,7 @@
     </footer>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="pfml.js"></script>
   <script src="popup.js"></script>
 </body>

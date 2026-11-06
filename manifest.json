@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PLaMo Translate (LM Studio)",
   "version": "1.0.0",
-  "description": "PFNのPLaMo 3 Translateシリーズ（0.8B/2B/8B/31B）とLM StudioローカルサーバーAPIを利用してWebページやテキストを高精度に翻訳する拡張機能",
+  "description": "High-accuracy local translation extension powered by PFN PLaMo 3 Translate (0.8B/2B/8B/31B) & LM Studio local server API",
   "permissions": [
     "storage",
     "contextMenus",
@@ -31,6 +31,7 @@
         "<all_urls>"
       ],
       "js": [
+        "i18n.js",
         "pfml.js",
         "content.js"
       ],

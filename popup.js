@@ -1,7 +1,7 @@
 /**
  * PLaMo Translate - Popup Script
  * Handles UI events, settings synchronization, LM Studio connection,
- * translation orchestration, and active tab integration.
+ * translation orchestration, active tab integration, and i18n localization.
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -43,6 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Settings DOM
   const settingsPanel = document.getElementById('settingsPanel');
   const btnCloseSettings = document.getElementById('btnCloseSettings');
+  const settingUiLang = document.getElementById('settingUiLang');
   const settingBaseUrl = document.getElementById('settingBaseUrl');
   const btnTestConnection = document.getElementById('btnTestConnection');
   const settingModel = document.getElementById('settingModel');
@@ -56,34 +57,88 @@ document.addEventListener('DOMContentLoaded', async () => {
   const settingsSaveStatus = document.getElementById('settingsSaveStatus');
 
   let currentSettings = { ...DEFAULT_SETTINGS };
+  let currentUiLang = 'ja';
 
   // -------------------------------------------------------------
-  // 1. Initialize Language Selectors
+  // 1. i18n Localization Engine
+  // -------------------------------------------------------------
+  function applyUiLanguage(preference) {
+    currentUiLang = PlamoI18n.resolveUiLang(preference || currentSettings.uiLang);
+    document.documentElement.lang = currentUiLang;
+
+    // Apply text content
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (key) {
+        el.textContent = PlamoI18n.t(key, {}, currentUiLang);
+      }
+    });
+
+    // Apply title attributes
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+      const key = el.getAttribute('data-i18n-title');
+      if (key) {
+        el.setAttribute('title', PlamoI18n.t(key, {}, currentUiLang));
+      }
+    });
+
+    // Apply placeholder attributes
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      const key = el.getAttribute('data-i18n-placeholder');
+      if (key) {
+        el.setAttribute('placeholder', PlamoI18n.t(key, {}, currentUiLang));
+      }
+    });
+
+    // Update dynamic text
+    updateCharCount();
+    populateLanguageDropdowns();
+  }
+
+  function updateCharCount() {
+    const count = inputText.value.length;
+    charCount.textContent = PlamoI18n.t('charCountUnit', { n: count }, currentUiLang);
+  }
+
+  // -------------------------------------------------------------
+  // 2. Initialize Language Selectors
   // -------------------------------------------------------------
   function populateLanguageDropdowns() {
+    const curSrc = sourceLangSelect.value || currentSettings.sourceLang || 'auto';
+    const curTgt = targetLangSelect.value || currentSettings.targetLang || 'ja';
+
     // Populate Source (Auto + 53 languages)
+    sourceLangSelect.innerHTML = `<option value="auto">${PlamoI18n.t('optAutoDetect', {}, currentUiLang)}</option>`;
     PLAMO_LANGUAGES.forEach(lang => {
       const opt = document.createElement('option');
       opt.value = lang.code;
-      opt.textContent = `${lang.name} (${lang.code})`;
+      opt.textContent = getLanguageDisplayName(lang.code, currentUiLang);
       sourceLangSelect.appendChild(opt);
     });
 
     // Populate Target (53 languages)
+    targetLangSelect.innerHTML = '';
     PLAMO_LANGUAGES.forEach(lang => {
       const opt = document.createElement('option');
       opt.value = lang.code;
-      opt.textContent = `${lang.name} (${lang.code})`;
+      opt.textContent = getLanguageDisplayName(lang.code, currentUiLang);
       targetLangSelect.appendChild(opt);
     });
+
+    sourceLangSelect.value = curSrc;
+    targetLangSelect.value = curTgt;
   }
 
   // -------------------------------------------------------------
-  // 2. Load & Apply Settings
+  // 3. Load & Apply Settings
   // -------------------------------------------------------------
   async function loadSettings() {
     const stored = await chrome.storage.local.get(DEFAULT_SETTINGS);
     currentSettings = { ...DEFAULT_SETTINGS, ...stored };
+
+    // Apply UI language first
+    settingUiLang.value = currentSettings.uiLang || 'auto';
+    applyUiLanguage(currentSettings.uiLang);
 
     // Apply to Main Controls
     sourceLangSelect.value = currentSettings.sourceLang || 'auto';
@@ -109,11 +164,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // -------------------------------------------------------------
-  // 3. Connection & Model Management
+  // 4. Connection & Model Management
   // -------------------------------------------------------------
   async function checkConnection(quiet = false) {
     if (!quiet) {
-      connectionStatus.textContent = '接続確認中...';
+      connectionStatus.textContent = currentUiLang === 'en' ? 'Checking...' : '接続確認中...';
     }
 
     try {
@@ -124,30 +179,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (response && response.ok) {
         connectionDot.className = 'status-dot connected';
-        connectionStatus.textContent = 'LM Studio 接続中';
+        connectionStatus.textContent = currentUiLang === 'en' ? 'LM Studio Connected' : 'LM Studio 接続中';
         updateModelOptions(response.models);
         return true;
       } else {
         connectionDot.className = 'status-dot disconnected';
-        connectionStatus.textContent = '未接続';
+        connectionStatus.textContent = PlamoI18n.t('statusDisconnected', {}, currentUiLang);
         if (!quiet) {
-          alert(`接続失敗: ${response ? response.error : 'LM Studio に応答がありません'}\nURL: ${settingBaseUrl.value}`);
+          const failMsg = currentUiLang === 'en'
+            ? `Connection Failed: ${response ? response.error : 'No response from LM Studio'}\nURL: ${settingBaseUrl.value}`
+            : `接続失敗: ${response ? response.error : 'LM Studio に応答がありません'}\nURL: ${settingBaseUrl.value}`;
+          alert(failMsg);
         }
         return false;
       }
     } catch (err) {
       connectionDot.className = 'status-dot disconnected';
-      connectionStatus.textContent = '未接続';
+      connectionStatus.textContent = PlamoI18n.t('statusDisconnected', {}, currentUiLang);
       if (!quiet) {
-        alert(`接続エラー: ${err.message}`);
+        alert(`${currentUiLang === 'en' ? 'Connection Error' : '接続エラー'}: ${err.message}`);
       }
       return false;
     }
   }
 
   function updateModelOptions(models = []) {
-    // Keep first auto option
-    settingModel.innerHTML = '<option value="">(ロード済みモデルを自動検出)</option>';
+    const autoLabel = PlamoI18n.t('optModelAuto', {}, currentUiLang);
+    settingModel.innerHTML = `<option value="">${autoLabel}</option>`;
 
     let foundCurrent = false;
     models.forEach(m => {
@@ -164,7 +222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Custom option
     const customOpt = document.createElement('option');
     customOpt.value = '__custom__';
-    customOpt.textContent = '✎ 手動入力...';
+    customOpt.textContent = currentUiLang === 'en' ? '✎ Custom model...' : '✎ 手動入力...';
     settingModel.appendChild(customOpt);
 
     if (currentSettings.model && !foundCurrent) {
@@ -177,7 +235,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // -------------------------------------------------------------
-  // 4. Translation Logic
+  // 5. Translation Logic
   // -------------------------------------------------------------
   async function performTranslation() {
     const text = inputText.value.trim();
@@ -216,13 +274,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnTranslate.disabled = false;
 
       if (response && response.ok) {
-        outputText.textContent = response.translatedText || '（翻訳結果が空です）';
+        outputText.textContent = response.translatedText || (currentUiLang === 'en' ? '(Empty translation)' : '（翻訳結果が空です）');
         outputText.style.display = 'block';
 
         // Badges
         const isSwitched = response.effectiveTargetLang && response.effectiveTargetLang !== targetLang;
         effectiveTargetBadge.textContent = isSwitched
-          ? `自動切替: ${response.effectiveTargetLang.toUpperCase()}`
+          ? (currentUiLang === 'en' ? `Auto: ${response.effectiveTargetLang.toUpperCase()}` : `自動切替: ${response.effectiveTargetLang.toUpperCase()}`)
           : targetLang.toUpperCase();
         effectiveTargetBadge.style.display = 'inline-flex';
 
@@ -237,8 +295,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           promptDetails.style.display = 'block';
         }
       } else {
-        const errorMsg = response ? response.error : '翻訳サービスから応答がありませんでした';
-        outputErrorText.textContent = errorMsg;
+        const defaultErr = currentUiLang === 'en' ? 'No response from translation service' : '翻訳サービスから応答がありませんでした';
+        outputErrorText.textContent = response ? response.error : defaultErr;
         outputError.style.display = 'block';
       }
     } catch (err) {
@@ -250,13 +308,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // -------------------------------------------------------------
-  // 5. Event Handlers
+  // 6. Event Handlers
   // -------------------------------------------------------------
 
   // Input Character Count & Auto Shortcut
-  inputText.addEventListener('input', () => {
-    charCount.textContent = `${inputText.value.length} 文字`;
-  });
+  inputText.addEventListener('input', updateCharCount);
 
   inputText.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -267,7 +323,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   btnClearInput.addEventListener('click', () => {
     inputText.value = '';
-    charCount.textContent = '0 文字';
+    updateCharCount();
     inputText.focus();
   });
 
@@ -290,7 +346,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const currentOut = outputText.textContent.trim();
     if (currentOut && outputText.style.display !== 'none') {
       inputText.value = currentOut;
-      charCount.textContent = `${currentOut.length} 文字`;
+      updateCharCount();
       performTranslation();
     }
   });
@@ -305,7 +361,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       await navigator.clipboard.writeText(textToCopy);
       const originalText = btnCopyOutput.textContent;
-      btnCopyOutput.textContent = '✓ コピー完了';
+      btnCopyOutput.textContent = PlamoI18n.t('btnCopySuccess', {}, currentUiLang);
       setTimeout(() => {
         btnCopyOutput.textContent = originalText;
       }, 1800);
@@ -341,13 +397,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (injection && injection.result && injection.result.trim()) {
         inputText.value = injection.result.trim();
-        charCount.textContent = `${inputText.value.length} 文字`;
+        updateCharCount();
         performTranslation();
       } else {
-        alert('閲覧中のページでテキストが選択されていません。');
+        alert(currentUiLang === 'en' ? 'No text selected on current web page.' : '閲覧中のページでテキストが選択されていません。');
       }
     } catch (err) {
-      alert(`選択テキストを取得できませんでした: ${err.message}`);
+      alert(`${currentUiLang === 'en' ? 'Failed to grab selected text' : '選択テキストを取得できませんでした'}: ${err.message}`);
     }
   });
 
@@ -360,7 +416,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_PAGE_TRANSLATION' });
       window.close(); // Close popup so user sees the page translation immediately
     } catch (err) {
-      alert(`ページ翻訳を開始できませんでした: ${err.message}\n(拡張機能が無効な chrome:// ページなどの可能性があります)`);
+      alert(`${currentUiLang === 'en' ? 'Could not start page translation' : 'ページ翻訳を開始できませんでした'}: ${err.message}\n(May be restricted on chrome:// URLs)`);
     }
   });
 
@@ -383,6 +439,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingModelCustom.style.display = settingModel.value === '__custom__' ? 'block' : 'none';
   });
 
+  // UI Language Switch Handler
+  settingUiLang.addEventListener('change', () => {
+    applyUiLanguage(settingUiLang.value);
+  });
+
   // Save Settings
   btnSaveSettings.addEventListener('click', async () => {
     let chosenModel = settingModel.value;
@@ -391,6 +452,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const updated = {
+      uiLang: settingUiLang.value,
       baseUrl: settingBaseUrl.value.trim(),
       model: chosenModel,
       apiMode: settingApiMode.value,
@@ -408,6 +470,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await chrome.storage.local.set(updated);
     currentSettings = { ...currentSettings, ...updated };
 
+    settingsSaveStatus.textContent = PlamoI18n.t('saveStatusSuccess', {}, currentUiLang);
     settingsSaveStatus.style.display = 'inline';
     setTimeout(() => {
       settingsSaveStatus.style.display = 'none';
@@ -417,7 +480,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // -------------------------------------------------------------
   // Startup
   // -------------------------------------------------------------
-  populateLanguageDropdowns();
   await loadSettings();
   checkConnection(true); // Silent connection check on popup open
 });

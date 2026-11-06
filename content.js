@@ -34,6 +34,16 @@
     }
   });
 
+  // i18n Translation Helper
+  function t(key, params = {}) {
+    const lang = (typeof PlamoI18n !== 'undefined' && PlamoI18n.resolveUiLang)
+      ? PlamoI18n.resolveUiLang(currentSettings.uiLang)
+      : 'ja';
+    return (typeof PlamoI18n !== 'undefined' && PlamoI18n.t)
+      ? PlamoI18n.t(key, params, lang)
+      : key;
+  }
+
   // -------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------
@@ -100,7 +110,7 @@
     floatingTriggerEl = document.createElement('div');
     floatingTriggerEl.className = 'plamo-ext-floating-trigger';
     floatingTriggerEl.setAttribute('role', 'button');
-    floatingTriggerEl.setAttribute('title', 'PLaMo で翻訳');
+    floatingTriggerEl.setAttribute('title', t('floatingTriggerTitle'));
     floatingTriggerEl.innerHTML = `
       <span class="plamo-ext-trigger-icon">🌐</span>
       <span class="plamo-ext-trigger-label">PLaMo</span>
@@ -158,10 +168,16 @@
     // Build Languages options
     const targetLang = overrideOptions.targetLang || currentSettings.targetLang || 'ja';
     const form = overrideOptions.form || currentSettings.form || 'none';
+    const uiLang = (typeof PlamoI18n !== 'undefined' && PlamoI18n.resolveUiLang)
+      ? PlamoI18n.resolveUiLang(currentSettings.uiLang)
+      : 'ja';
 
     const langOptionsHtml = PLAMO_LANGUAGES.map(lang => {
       const selected = lang.code === targetLang ? 'selected' : '';
-      return `<option value="${lang.code}" ${selected}>${lang.name} (${lang.code})</option>`;
+      const label = (typeof getLanguageDisplayName === 'function')
+        ? getLanguageDisplayName(lang.code, uiLang)
+        : `${lang.name} (${lang.code})`;
+      return `<option value="${lang.code}" ${selected}>${label}</option>`;
     }).join('');
 
     popoverCardEl.innerHTML = `
@@ -171,28 +187,28 @@
           <span class="plamo-ext-brand-name">PLaMo</span>
         </div>
         <div class="plamo-ext-header-controls">
-          <select class="plamo-ext-select plamo-ext-card-target-lang" title="翻訳先の言語">
+          <select class="plamo-ext-select plamo-ext-card-target-lang" title="${t('cardTargetLangTitle')}">
             ${langOptionsHtml}
           </select>
-          <select class="plamo-ext-select plamo-ext-card-form" title="日本語の文体 (丁寧語: です・ます / 常体: だ・である)" style="${targetLang === 'ja' ? '' : 'display:none;'}">
-            <option value="none" ${form === 'none' ? 'selected' : ''}>標準</option>
-            <option value="polite" ${form === 'polite' ? 'selected' : ''}>丁寧語</option>
-            <option value="plain" ${form === 'plain' ? 'selected' : ''}>常体</option>
+          <select class="plamo-ext-select plamo-ext-card-form" title="${t('formTitleTooltip')}" style="${targetLang === 'ja' ? '' : 'display:none;'}">
+            <option value="none" ${form === 'none' ? 'selected' : ''}>${t('formNoneShort')}</option>
+            <option value="polite" ${form === 'polite' ? 'selected' : ''}>${t('formPoliteShort')}</option>
+            <option value="plain" ${form === 'plain' ? 'selected' : ''}>${t('formPlainShort')}</option>
           </select>
         </div>
       </div>
       <div class="plamo-ext-card-body">
         <div class="plamo-ext-loading">
           <div class="plamo-ext-spinner"></div>
-          <span>PLaMo で翻訳中...</span>
+          <span>${t('cardTranslating')}</span>
         </div>
       </div>
       <div class="plamo-ext-card-footer">
         <span class="plamo-ext-card-status" style="font-size:11px; color:#64748b;">LM Studio</span>
         <div class="plamo-ext-footer-actions">
-          ${selectionData.isEditable ? '<button class="plamo-ext-btn plamo-ext-card-replace">✍️ 置換</button>' : ''}
-          <button class="plamo-ext-btn plamo-ext-card-reload" title="再翻訳">🔄 再翻訳</button>
-          <button class="plamo-ext-btn plamo-ext-btn-primary plamo-ext-card-copy">📋 コピー</button>
+          ${selectionData.isEditable ? `<button class="plamo-ext-btn plamo-ext-card-replace">${t('btnReplace')}</button>` : ''}
+          <button class="plamo-ext-btn plamo-ext-card-reload" title="${t('btnReload')}">${t('btnReload')}</button>
+          <button class="plamo-ext-btn plamo-ext-btn-primary plamo-ext-card-copy">${t('btnCopy')}</button>
         </div>
       </div>
     `;
@@ -267,7 +283,7 @@
     bodyEl.innerHTML = `
       <div class="plamo-ext-loading">
         <div class="plamo-ext-spinner"></div>
-        <span>PLaMo で翻訳中...</span>
+        <span>${t('cardTranslating')}</span>
       </div>
     `;
 
@@ -282,19 +298,19 @@
       if (!popoverCardEl) return;
 
       if (response && response.ok) {
-        const translated = response.translatedText || '（翻訳結果が空です）';
+        const translated = response.translatedText || t('outputPlaceholder');
         const autoSwitched = response.effectiveTargetLang && response.effectiveTargetLang !== targetLang;
 
         let autoNoticeHtml = '';
         if (autoSwitched) {
-          autoNoticeHtml = `<div class="plamo-ext-auto-badge">⚡ 日本語を検出したため 英語 へ自動切替しました</div>`;
+          autoNoticeHtml = `<div class="plamo-ext-auto-badge">${t('autoSwitchedBadge')}</div>`;
         }
 
         bodyEl.innerHTML = `
           ${autoNoticeHtml}
           <div class="plamo-ext-result-content" style="white-space: pre-wrap;">${escapeHtml(translated)}</div>
           <details class="plamo-ext-source-details">
-            <summary>原文を表示 (${text.length}文字)</summary>
+            <summary>${t('showSource', { n: text.length })}</summary>
             <div class="plamo-ext-source-text">${escapeHtml(text)}</div>
           </details>
         `;
@@ -308,7 +324,7 @@
           try {
             await navigator.clipboard.writeText(translated);
             const origText = copyBtn.innerHTML;
-            copyBtn.innerHTML = '✓ コピー完了';
+            copyBtn.innerHTML = t('btnCopySuccess');
             copyBtn.classList.add('plamo-ext-btn-success');
             setTimeout(() => {
               if (copyBtn) {
@@ -573,11 +589,11 @@
     pageBarEl = document.createElement('div');
     pageBarEl.className = 'plamo-ext-page-bar';
     pageBarEl.innerHTML = `
-      <span class="plamo-ext-page-title">🌐 PLaMo ページ翻訳</span>
-      <span class="plamo-ext-page-progress">翻訳準備中... (0/${total})</span>
-      <button class="plamo-ext-btn-sm plamo-ext-page-toggle-src" title="原文を表示または非表示">原文を隠す</button>
-      <button class="plamo-ext-btn-sm plamo-ext-page-pause" title="翻訳を一時停止">一時停止</button>
-      <button class="plamo-ext-btn-sm plamo-ext-page-restore" title="翻訳を解除して元に戻す">元に戻す</button>
+      <span class="plamo-ext-page-title">🌐 PLaMo</span>
+      <span class="plamo-ext-page-progress">${t('pageTranslatingProgress', { current: 0, total })}</span>
+      <button class="plamo-ext-btn-sm plamo-ext-page-toggle-src" title="${t('btnHideOriginal')}">${t('btnHideOriginal')}</button>
+      <button class="plamo-ext-btn-sm plamo-ext-page-pause" title="${t('btnPause')}">${t('btnPause')}</button>
+      <button class="plamo-ext-btn-sm plamo-ext-page-restore" title="${t('btnRestore')}">${t('btnRestore')}</button>
     `;
 
     const toggleSrcBtn = pageBarEl.querySelector('.plamo-ext-page-toggle-src');
@@ -587,12 +603,12 @@
     toggleSrcBtn.addEventListener('click', () => {
       document.body.classList.toggle('plamo-ext-hide-original');
       const isHidden = document.body.classList.contains('plamo-ext-hide-original');
-      toggleSrcBtn.textContent = isHidden ? '原文を表示' : '原文を隠す';
+      toggleSrcBtn.textContent = isHidden ? t('btnShowOriginal') : t('btnHideOriginal');
     });
 
     pauseBtn.addEventListener('click', () => {
       isPageTranslationPaused = !isPageTranslationPaused;
-      pauseBtn.textContent = isPageTranslationPaused ? '再開' : '一時停止';
+      pauseBtn.textContent = isPageTranslationPaused ? t('btnResume') : t('btnPause');
     });
 
     restoreBtn.addEventListener('click', () => {
@@ -609,9 +625,9 @@
 
     if (progressEl) {
       if (isFinished) {
-        progressEl.textContent = `完了 (${total}/${total})`;
+        progressEl.textContent = t('pageTranslationComplete', { total });
       } else {
-        progressEl.textContent = `翻訳中 (${current}/${total})`;
+        progressEl.textContent = t('pageTranslatingProgress', { current, total });
       }
     }
 

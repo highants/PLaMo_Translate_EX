@@ -3,23 +3,40 @@
  * Handles Context Menus and LM Studio API routing to avoid Page CSP/Mixed Content issues
  */
 
-importScripts('pfml.js');
+importScripts('i18n.js', 'pfml.js');
 
-// 1. Setup Context Menus on Installation
+// 1. Setup Context Menus with i18n support
+async function setupContextMenus() {
+  try {
+    const stored = await chrome.storage.local.get(DEFAULT_SETTINGS);
+    const lang = PlamoI18n.resolveUiLang(stored.uiLang || DEFAULT_SETTINGS.uiLang);
+
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: 'plamo-translate-selection',
+        title: PlamoI18n.t('menuTranslateSelection', {}, lang),
+        contexts: ['selection']
+      });
+
+      chrome.contextMenus.create({
+        id: 'plamo-translate-page',
+        title: PlamoI18n.t('menuTranslatePage', {}, lang),
+        contexts: ['page']
+      });
+    });
+  } catch (err) {
+    console.error('Failed to setup context menus:', err);
+  }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: 'plamo-translate-selection',
-      title: 'PLaMo Translate で選択テキストを翻訳',
-      contexts: ['selection']
-    });
+  setupContextMenus();
+});
 
-    chrome.contextMenus.create({
-      id: 'plamo-translate-page',
-      title: 'PLaMo Translate でこのページを翻訳',
-      contexts: ['page']
-    });
-  });
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.uiLang) {
+    setupContextMenus();
+  }
 });
 
 // 2. Handle Context Menu Actions

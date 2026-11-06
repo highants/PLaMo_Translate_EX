@@ -85,6 +85,7 @@ const DEFAULT_SETTINGS = {
   baseUrl: 'http://localhost:1234',
   model: '', // Empty means auto-select currently loaded model from /v1/models
   apiMode: 'completions', // 'completions' (PFML3 raw, recommended) | 'chat' (/v1/chat/completions)
+  uiLang: 'auto', // 'auto' | 'ja' | 'en'
   sourceLang: 'auto',
   targetLang: 'ja',
   autoSwitchJaEn: true, // If input is Japanese and target is 'ja', automatically translate to 'en'
@@ -95,6 +96,21 @@ const DEFAULT_SETTINGS = {
   maxTokens: 1024,
   selectionMode: 'button' // 'button' | 'instant' | 'off'
 };
+
+/**
+ * Get language display name based on current UI language
+ * @param {string} code
+ * @param {'ja'|'en'} [uiLang='ja']
+ * @returns {string}
+ */
+function getLanguageDisplayName(code, uiLang = 'ja') {
+  const lang = PLAMO_LANGUAGES.find(l => l.code === code);
+  if (!lang) return code;
+  if (uiLang === 'en') {
+    return `${lang.enName} (${lang.code})`;
+  }
+  return `${lang.name} (${lang.code})`;
+}
 
 /**
  * Parse glossary from either a multiline string ("source=target", "source\ttarget", "source: target")
@@ -387,6 +403,7 @@ if (typeof module !== 'undefined' && module.exports) {
     STOP_TOKENS,
     PLAMO_LANGUAGES,
     DEFAULT_SETTINGS,
+    getLanguageDisplayName,
     parseGlossary,
     isJapaneseText,
     resolveTargetLang,
