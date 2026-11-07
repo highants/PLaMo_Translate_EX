@@ -83,8 +83,8 @@ Easily selectable directly from the Settings panel:
 
 1. **Native PFML3 Prompt Format**:
    * Strictly constructs Preferred Networks' native markup tags (`<|plamo:tag|>`, `<|plamo:msg|>`, `<|plamo:key|>`, `<|plamo:val|>`) to maximize translation fidelity.
-2. **Japanese Politeness & Form Control**:
-   * Explicitly choose Japanese sentence styling: **Polite** (`polite`: です/ます調) or **Plain** (`plain`: だ/である調).
+2. **Japanese Politeness & Form Control (Polite / Plain / Easy Japanese)**:
+   * Explicitly choose Japanese sentence styling: **Polite** (`polite`: です/ます調), **Plain** (`plain`: だ/である調), or official **Easy Japanese** (`ja-easy` / `ja(easy)`).
 3. **Context & Glossary Support**:
    * Supply background domain context or enforce custom term mapping pairs (e.g., `LLM=Large Language Model`).
 4. **In-Page Floating Selection Translation**:
@@ -95,7 +95,7 @@ Easily selectable directly from the Settings panel:
    * Injects clean bilingual inline blocks beneath the original paragraphs.
    * Includes a floating control pill to **Pause/Resume**, **Hide/Show Original**, or **Restore** the page to its original DOM state.
 6. **Smart Auto Ja↔En Language Swap**:
-   * Automatically flips the target language to English when Japanese text is entered while target is set to Japanese.
+   * Automatically flips the target language to English when Japanese text is entered while target is set to Japanese (preserved as Easy Japanese rewrite when `ja-easy` is selected).
 7. **Serialized Offscreen Queue**:
    * In Mode B, multiple paragraph translation requests are dispatched through a mutex queue to ensure KV cache stability and prevent memory race conditions.
 8. **Dual Workspace (Popup & Full-Screen Tab)**:
@@ -103,11 +103,15 @@ Easily selectable directly from the Settings panel:
 
 ---
 
-## Supported Languages (53 Languages)
+## Supported Languages (53 Languages + Easy Japanese)
 
-All 53 languages officially supported by PLaMo 3 Translate are available:
+All 53 languages officially supported by PLaMo 3 Translate, plus official **Easy Japanese**, are available:
 
-> **Common**: English (`en`), Japanese (`ja`), Chinese (`zh`), Korean (`ko`), French (`fr`), German (`de`), Spanish (`es`), Italian (`it`), Russian (`ru`), Vietnamese (`vi`), Thai (`th`), Indonesian (`id`), Arabic (`ar`), Dutch (`nl`), Polish (`pl`), Portuguese (`pt`), Turkish (`tr`), Hindi (`hi`), Ukrainian (`uk`), and 34 other supported languages.
+> **Common**: English (`en`), Japanese (`ja`), **Easy Japanese (`ja-easy`)**, Chinese (`zh`), Korean (`ko`), French (`fr`), German (`de`), Spanish (`es`), Italian (`it`), Russian (`ru`), Vietnamese (`vi`), Thai (`th`), Indonesian (`id`), Arabic (`ar`), Dutch (`nl`), Polish (`pl`), Portuguese (`pt`), Turkish (`tr`), Hindi (`hi`), Ukrainian (`uk`), and 34 other supported languages.
+
+> **💡 Easy Japanese Mode**:
+> PLaMo 3 Translate natively supports Easy Japanese (PFML3: `ja-easy` / `ja(easy)`).
+> Beyond translating from other languages into simplified Japanese, it can also **rewrite complex Japanese news and official documents into clear, accessible Japanese for non-native speakers and children**. You can activate it by picking "Japanese (Easy) (`ja-easy`)" from the language menu or selecting "Easy Japanese" from the style dropdown.
 
 ---
 

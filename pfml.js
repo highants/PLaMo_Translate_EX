@@ -22,6 +22,7 @@ const STOP_TOKENS = [
 const PLAMO_LANGUAGES = [
   // Frequently used
   { code: 'ja', name: '日本語', enName: 'Japanese' },
+  { code: 'ja-easy', name: 'やさしい日本語', enName: 'Japanese (Easy)' },
   { code: 'en', name: '英語', enName: 'English' },
   { code: 'zh', name: '中国語', enName: 'Chinese' },
   { code: 'ko', name: '韓国語', enName: 'Korean' },
@@ -134,13 +135,26 @@ const DEFAULT_SETTINGS = {
 };
 
 /**
+ * Normalize language code (e.g. ja(easy) -> ja-easy)
+ * @param {string} code
+ * @returns {string}
+ */
+function normalizeLanguageCode(code) {
+  if (!code || typeof code !== 'string') return '';
+  const trimmed = code.trim().toLowerCase();
+  if (trimmed === 'ja(easy)' || trimmed === 'ja-easy') return 'ja-easy';
+  return trimmed;
+}
+
+/**
  * Get language display name based on current UI language
  * @param {string} code
  * @param {'ja'|'en'} [uiLang='ja']
  * @returns {string}
  */
 function getLanguageDisplayName(code, uiLang = 'ja') {
-  const lang = PLAMO_LANGUAGES.find(l => l.code === code);
+  const norm = normalizeLanguageCode(code);
+  const lang = PLAMO_LANGUAGES.find(l => l.code === norm);
   if (!lang) return code;
   if (uiLang === 'en') {
     return `${lang.enName} (${lang.code})`;
@@ -202,15 +216,29 @@ function isJapaneseText(text) {
 }
 
 /**
- * Resolve target language considering auto Japanese/English switching
+ * Resolve target language considering auto Japanese/English switching and Easy Japanese form
+ * @param {string} text
+ * @param {string} sourceLang
+ * @param {string} targetLang
+ * @param {boolean} [autoSwitchJaEn=true]
+ * @param {string} [form='none']
+ * @returns {string}
  */
-function resolveTargetLang(text, sourceLang, targetLang, autoSwitchJaEn = true) {
-  if (autoSwitchJaEn && (sourceLang === 'auto' || !sourceLang) && targetLang === 'ja') {
+function resolveTargetLang(text, sourceLang, targetLang, autoSwitchJaEn = true, form = 'none') {
+  let normTarget = normalizeLanguageCode(targetLang);
+
+  // If style is explicitly Easy Japanese, map target to ja-easy
+  if (normTarget === 'ja' && (form === 'easy' || form === 'ja-easy')) {
+    return 'ja-easy';
+  }
+
+  // Auto-switch JA -> EN only if target is standard Japanese ('ja')
+  if (autoSwitchJaEn && (sourceLang === 'auto' || !sourceLang) && normTarget === 'ja') {
     if (isJapaneseText(text)) {
       return 'en';
     }
   }
-  return targetLang || 'ja';
+  return normTarget || 'ja';
 }
 
 /**
@@ -254,13 +282,17 @@ function buildPfml3Prompt(options = {}) {
   // 3. Input
   prompt += `${PFML_TAG}input`;
   if (sourceLang && sourceLang !== 'auto') {
-    prompt += `${PFML_KEY}lang${PFML_VAL}${sourceLang.trim()}`;
+    prompt += `${PFML_KEY}lang${PFML_VAL}${normalizeLanguageCode(sourceLang)}`;
   }
   prompt += `${PFML_MSG}${text}`;
 
   // 4. Output
-  prompt += `${PFML_TAG}output${PFML_KEY}lang${PFML_VAL}${targetLang.trim()}`;
-  if (targetLang === 'ja' && (form === 'polite' || form === 'plain')) {
+  let normTarget = normalizeLanguageCode(targetLang);
+  if (normTarget === 'ja' && (form === 'easy' || form === 'ja-easy')) {
+    normTarget = 'ja-easy';
+  }
+  prompt += `${PFML_TAG}output${PFML_KEY}lang${PFML_VAL}${normTarget}`;
+  if (normTarget === 'ja' && (form === 'polite' || form === 'plain')) {
     prompt += `${PFML_KEY}form${PFML_VAL}${form.trim()}`;
   }
   prompt += `${PFML_MSG}`;
@@ -402,8 +434,8 @@ async function executePlamoTranslation(options = {}) {
     stop: STOP_TOKENS,
     stream: false,
     chat_template_kwargs: {
-      target_lang: effectiveTargetLang,
-      ...(sourceLang && sourceLang !== 'auto' ? { source_lang: sourceLang } : {})
+      target_lang: normalizeLanguageCode(effectiveTargetLang),
+      ...(sourceLang && sourceLang !== 'auto' ? { source_lang: normalizeLanguageCode(sourceLang) } : {})
     }
   };
 
@@ -440,6 +472,7 @@ if (typeof module !== 'undefined' && module.exports) {
     PLAMO_LANGUAGES,
     WLLAMA_MODEL_PRESETS,
     DEFAULT_SETTINGS,
+    normalizeLanguageCode,
     getLanguageDisplayName,
     parseGlossary,
     isJapaneseText,

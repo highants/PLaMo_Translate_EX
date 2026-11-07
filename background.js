@@ -187,7 +187,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const glossaryText = message.glossaryText !== undefined ? message.glossaryText : settings.glossaryText;
           const engineMode = message.engineMode || settings.engineMode || 'lmstudio';
 
-          const effectiveTargetLang = resolveTargetLang(text, sourceLang, targetLang, autoSwitchJaEn);
+          const effectiveTargetLang = resolveTargetLang(text, sourceLang, targetLang, autoSwitchJaEn, form);
 
           const pfmlPrompt = buildPfml3Prompt({
             text,

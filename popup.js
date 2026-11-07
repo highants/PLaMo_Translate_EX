@@ -485,7 +485,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let tgt = targetLangSelect.value;
 
     if (src === 'auto') {
-      src = tgt === 'ja' ? 'en' : 'ja';
+      src = (tgt === 'ja' || tgt === 'ja-easy') ? 'en' : 'ja';
     }
 
     sourceLangSelect.value = tgt;

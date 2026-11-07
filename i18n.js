@@ -32,9 +32,11 @@
       formNone: '指定なし',
       formPolite: '丁寧 (です・ます)',
       formPlain: '常体 (だ・である)',
+      formEasy: 'やさしい日本語',
       formNoneShort: '文体:標準',
       formPoliteShort: '丁寧語',
       formPlainShort: '常体',
+      formEasyShort: 'やさしい日本語',
       formTitleTooltip: '日本語の文体 (丁寧語: です・ます / 常体: だ・である)',
 
       // Input Card
@@ -165,9 +167,11 @@
       formNone: 'Default',
       formPolite: 'Polite (Desu/Masu)',
       formPlain: 'Plain (Da/Dearu)',
+      formEasy: 'Easy Japanese',
       formNoneShort: 'Style:Default',
       formPoliteShort: 'Polite',
       formPlainShort: 'Plain',
+      formEasyShort: 'Easy Japanese',
       formTitleTooltip: 'Japanese Sentence Style (Polite: desu/masu / Plain: da/dearu)',
 
       // Input Card

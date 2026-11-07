@@ -194,6 +194,7 @@
             <option value="none" ${form === 'none' ? 'selected' : ''}>${t('formNoneShort')}</option>
             <option value="polite" ${form === 'polite' ? 'selected' : ''}>${t('formPoliteShort')}</option>
             <option value="plain" ${form === 'plain' ? 'selected' : ''}>${t('formPlainShort')}</option>
+            <option value="easy" ${form === 'easy' ? 'selected' : ''}>${t('formEasyShort')}</option>
           </select>
         </div>
       </div>
