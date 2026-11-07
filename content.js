@@ -333,7 +333,7 @@
               }
             }, 2000);
           } catch (err) {
-            console.error('Failed to copy to clipboard:', err);
+            console.warn('Failed to copy to clipboard:', err);
           }
         };
 

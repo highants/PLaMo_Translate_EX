@@ -80,11 +80,47 @@ const PLAMO_LANGUAGES = [
   { code: 'uz', name: 'ウズベク語', enName: 'Uzbek' }
 ];
 
+// Official PLaMo 3 Translate 0.8B GGUF Presets for In-Browser Wllama (Mode B)
+const WLLAMA_MODEL_PRESETS = [
+  {
+    id: 'q4_k_m',
+    name: 'PLaMo 3 Translate 0.8B (Q4_K_M / 約547MB - 推奨)',
+    enName: 'PLaMo 3 Translate 0.8B (Q4_K_M / ~547MB - Recommended)',
+    url: 'https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF/resolve/main/plamo-3-translate-0.8b-Q4_K_M.gguf',
+    sizeMB: 547
+  },
+  {
+    id: 'q4_0',
+    name: 'PLaMo 3 Translate 0.8B (Q4_0 / 約522MB)',
+    enName: 'PLaMo 3 Translate 0.8B (Q4_0 / ~522MB)',
+    url: 'https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF/resolve/main/plamo-3-translate-0.8b-Q4_0.gguf',
+    sizeMB: 522
+  },
+  {
+    id: 'q3_k_m',
+    name: 'PLaMo 3 Translate 0.8B (Q3_K_M / 約464MB - 軽量)',
+    enName: 'PLaMo 3 Translate 0.8B (Q3_K_M / ~464MB - Lightweight)',
+    url: 'https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF/resolve/main/plamo-3-translate-0.8b-Q3_K_M.gguf',
+    sizeMB: 464
+  },
+  {
+    id: 'q2_k',
+    name: 'PLaMo 3 Translate 0.8B (Q2_K / 約391MB - 超軽量)',
+    enName: 'PLaMo 3 Translate 0.8B (Q2_K / ~391MB - Ultra Light)',
+    url: 'https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF/resolve/main/plamo-3-translate-0.8b-Q2_K.gguf',
+    sizeMB: 391
+  }
+];
+
 // Default Extension Settings
 const DEFAULT_SETTINGS = {
+  engineMode: 'lmstudio', // 'lmstudio' (Mode A: Local Server) | 'wllama' (Mode B: In-Browser Offscreen Wllama)
   baseUrl: 'http://localhost:1234',
   model: '', // Empty means auto-select currently loaded model from /v1/models
   apiMode: 'completions', // 'completions' (PFML3 raw, recommended) | 'chat' (/v1/chat/completions)
+  wllamaModelUrl: WLLAMA_MODEL_PRESETS[0].url,
+  wllamaUseWebGpu: true,
+  wllamaContextSize: 2048,
   uiLang: 'auto', // 'auto' | 'ja' | 'en'
   sourceLang: 'auto',
   targetLang: 'ja',
@@ -402,6 +438,7 @@ if (typeof module !== 'undefined' && module.exports) {
     PFML_VAL,
     STOP_TOKENS,
     PLAMO_LANGUAGES,
+    WLLAMA_MODEL_PRESETS,
     DEFAULT_SETTINGS,
     getLanguageDisplayName,
     parseGlossary,

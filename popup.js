@@ -13,6 +13,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const btnGrabSelection = document.getElementById('btnGrabSelection');
   const btnPageTranslate = document.getElementById('btnPageTranslate');
+  const btnModeLmStudio = document.getElementById('btnModeLmStudio');
+  const btnModeWllama = document.getElementById('btnModeWllama');
 
   const sourceLangSelect = document.getElementById('sourceLangSelect');
   const targetLangSelect = document.getElementById('targetLangSelect');
@@ -44,17 +46,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   const settingsPanel = document.getElementById('settingsPanel');
   const btnCloseSettings = document.getElementById('btnCloseSettings');
   const settingUiLang = document.getElementById('settingUiLang');
+  const settingEngineMode = document.getElementById('settingEngineMode');
+  const lmStudioSettingsGroup = document.getElementById('lmStudioSettingsGroup');
+  const wllamaSettingsGroup = document.getElementById('wllamaSettingsGroup');
   const settingBaseUrl = document.getElementById('settingBaseUrl');
   const btnTestConnection = document.getElementById('btnTestConnection');
   const settingModel = document.getElementById('settingModel');
   const settingModelCustom = document.getElementById('settingModelCustom');
   const settingApiMode = document.getElementById('settingApiMode');
+  const settingWllamaModel = document.getElementById('settingWllamaModel');
+  const settingWllamaModelCustom = document.getElementById('settingWllamaModelCustom');
+  const settingWllamaWebGpu = document.getElementById('settingWllamaWebGpu');
+  const btnWllamaLoad = document.getElementById('btnWllamaLoad');
+  const btnWllamaUnload = document.getElementById('btnWllamaUnload');
+  const btnWllamaClearCache = document.getElementById('btnWllamaClearCache');
+  const wllamaProgressWrap = document.getElementById('wllamaProgressWrap');
+  const wllamaProgressBar = document.getElementById('wllamaProgressBar');
+  const wllamaStatusText = document.getElementById('wllamaStatusText');
   const settingSelectionMode = document.getElementById('settingSelectionMode');
   const settingAutoSwitchJaEn = document.getElementById('settingAutoSwitchJaEn');
   const settingTemperature = document.getElementById('settingTemperature');
   const settingMaxTokens = document.getElementById('settingMaxTokens');
   const btnSaveSettings = document.getElementById('btnSaveSettings');
   const settingsSaveStatus = document.getElementById('settingsSaveStatus');
+  const loadingTextEl = outputLoading.querySelector('[data-i18n="loadingText"]');
 
   let currentSettings = { ...DEFAULT_SETTINGS };
   let currentUiLang = 'ja';
@@ -93,6 +108,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Update dynamic text
     updateCharCount();
     populateLanguageDropdowns();
+    populateWllamaPresets();
+  }
+
+  function populateWllamaPresets() {
+    if (!settingWllamaModel || typeof WLLAMA_MODEL_PRESETS === 'undefined') return;
+    const currentUrl = currentSettings.wllamaModelUrl || DEFAULT_SETTINGS.wllamaModelUrl;
+    settingWllamaModel.innerHTML = '';
+
+    let matchedPreset = false;
+    WLLAMA_MODEL_PRESETS.forEach(preset => {
+      const opt = document.createElement('option');
+      opt.value = preset.url;
+      opt.textContent = currentUiLang === 'en' ? preset.enName : preset.name;
+      if (preset.url === currentUrl) {
+        opt.selected = true;
+        matchedPreset = true;
+      }
+      settingWllamaModel.appendChild(opt);
+    });
+
+    const customOpt = document.createElement('option');
+    customOpt.value = '__custom__';
+    customOpt.textContent = currentUiLang === 'en' ? '✎ Custom GGUF URL...' : '✎ カスタム GGUF URL...';
+    settingWllamaModel.appendChild(customOpt);
+
+    if (currentUrl && !matchedPreset) {
+      customOpt.selected = true;
+      settingWllamaModelCustom.style.display = 'block';
+      settingWllamaModelCustom.value = currentUrl;
+    } else {
+      settingWllamaModelCustom.style.display = 'none';
+    }
+  }
+
+  function getSelectedWllamaModelUrl() {
+    if (!settingWllamaModel) return DEFAULT_SETTINGS.wllamaModelUrl;
+    if (settingWllamaModel.value === '__custom__') {
+      return settingWllamaModelCustom.value.trim() || DEFAULT_SETTINGS.wllamaModelUrl;
+    }
+    return settingWllamaModel.value || DEFAULT_SETTINGS.wllamaModelUrl;
+  }
+
+  function applyEngineModeVisibility(mode) {
+    const isWllama = mode === 'wllama';
+    if (settingEngineMode) settingEngineMode.value = isWllama ? 'wllama' : 'lmstudio';
+    if (btnModeLmStudio) btnModeLmStudio.classList.toggle('active', !isWllama);
+    if (btnModeWllama) btnModeWllama.classList.toggle('active', isWllama);
+    if (lmStudioSettingsGroup) lmStudioSettingsGroup.style.display = isWllama ? 'none' : 'flex';
+    if (wllamaSettingsGroup) wllamaSettingsGroup.style.display = isWllama ? 'flex' : 'none';
   }
 
   function updateCharCount() {
@@ -148,14 +212,100 @@ document.addEventListener('DOMContentLoaded', async () => {
     glossaryInput.value = currentSettings.glossaryText || '';
 
     // Apply to Settings Panel
+    const engineMode = currentSettings.engineMode || 'lmstudio';
+    applyEngineModeVisibility(engineMode);
     settingBaseUrl.value = currentSettings.baseUrl || 'http://localhost:1234';
     settingApiMode.value = currentSettings.apiMode || 'completions';
+    if (settingWllamaWebGpu) {
+      settingWllamaWebGpu.checked = currentSettings.wllamaUseWebGpu !== false;
+    }
+    populateWllamaPresets();
     settingSelectionMode.value = currentSettings.selectionMode || 'button';
     settingAutoSwitchJaEn.checked = !!currentSettings.autoSwitchJaEn;
     settingTemperature.value = currentSettings.temperature !== undefined ? currentSettings.temperature : 0;
     settingMaxTokens.value = currentSettings.maxTokens || 1024;
 
     updateFormGroupVisibility();
+  }
+
+  function formatMB(bytes) {
+    if (!bytes || bytes <= 0) return '0 MB';
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function renderWllamaState(state, cachedModels = []) {
+    if (!state) return;
+    const isWllamaMode = (currentSettings.engineMode || 'lmstudio') === 'wllama';
+    const selectedUrl = getSelectedWllamaModelUrl();
+    const cachedEntry = Array.isArray(cachedModels)
+      ? cachedModels.find(m => m.url === selectedUrl)
+      : null;
+
+    if (state.status === 'downloading' || state.status === 'loading') {
+      const pct = state.percent || 0;
+      wllamaProgressWrap.style.display = 'block';
+      wllamaProgressBar.style.width = `${pct}%`;
+      const phaseLabel = state.status === 'downloading'
+        ? (currentUiLang === 'en' ? 'Downloading' : 'ダウンロード中')
+        : (currentUiLang === 'en' ? 'Initializing WASM/WebGPU' : 'メモリへ展開中');
+      const sizeStr = state.total > 0 ? ` (${formatMB(state.loaded)} / ${formatMB(state.total)})` : '';
+      const msg = `${phaseLabel}: ${pct}%${sizeStr}`;
+      wllamaStatusText.textContent = msg;
+      if (loadingTextEl && isWllamaMode) {
+        loadingTextEl.textContent = msg;
+      }
+      if (isWllamaMode) {
+        connectionDot.className = 'status-dot connected';
+        connectionStatus.textContent = `${phaseLabel} ${pct}%`;
+      }
+    } else if (state.status === 'ready') {
+      wllamaProgressWrap.style.display = 'none';
+      wllamaProgressBar.style.width = '100%';
+      const backendLabel = state.backend || 'WASM';
+      wllamaStatusText.textContent = currentUiLang === 'en'
+        ? `✓ Loaded in browser (${backendLabel})`
+        : `✓ ブラウザ内にロード完了 (${backendLabel})`;
+      if (loadingTextEl) {
+        loadingTextEl.textContent = PlamoI18n.t('loadingText', {}, currentUiLang);
+      }
+      if (isWllamaMode) {
+        connectionDot.className = 'status-dot connected';
+        connectionStatus.textContent = `Wllama 0.8B (${backendLabel})`;
+      }
+    } else if (state.status === 'error') {
+      wllamaProgressWrap.style.display = 'none';
+      wllamaStatusText.textContent = `⚠️ ${state.error || 'Error'}`;
+      if (isWllamaMode) {
+        connectionDot.className = 'status-dot disconnected';
+        connectionStatus.textContent = currentUiLang === 'en' ? 'Wllama Error' : 'Wllama エラー';
+      }
+    } else {
+      wllamaProgressWrap.style.display = 'none';
+      if (cachedEntry && cachedEntry.size > 0) {
+        wllamaStatusText.textContent = currentUiLang === 'en'
+          ? `📦 Cached in OPFS (${formatMB(cachedEntry.size)}) - Ready to load`
+          : `📦 OPFSキャッシュ済 (${formatMB(cachedEntry.size)}) - 即時ロード可能`;
+      } else {
+        wllamaStatusText.textContent = PlamoI18n.t('wllamaStatusIdle', {}, currentUiLang);
+      }
+      if (isWllamaMode) {
+        connectionDot.className = 'status-dot connected';
+        connectionStatus.textContent = cachedEntry
+          ? (currentUiLang === 'en' ? 'Wllama 0.8B (Cached)' : 'Wllama 0.8B (キャッシュ済)')
+          : (currentUiLang === 'en' ? 'Wllama 0.8B (Standby)' : 'Wllama 0.8B (待機中)');
+      }
+    }
+  }
+
+  async function refreshWllamaStatus() {
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'WLLAMA_GET_STATUS' });
+      if (res && res.ok) {
+        renderWllamaState(res.state, res.cachedModels || []);
+      }
+    } catch (err) {
+      console.warn('Could not query Wllama status:', err);
+    }
   }
 
   function updateFormGroupVisibility() {
@@ -366,7 +516,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnCopyOutput.textContent = originalText;
       }, 1800);
     } catch (err) {
-      console.error('Failed to copy text:', err);
+      console.warn('Failed to copy text:', err);
     }
   });
 
@@ -439,6 +589,89 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingModelCustom.style.display = settingModel.value === '__custom__' ? 'block' : 'none';
   });
 
+  if (settingWllamaModel) {
+    settingWllamaModel.addEventListener('change', () => {
+      settingWllamaModelCustom.style.display = settingWllamaModel.value === '__custom__' ? 'block' : 'none';
+      refreshWllamaStatus();
+    });
+  }
+
+  async function switchEngineMode(newMode) {
+    const mode = newMode === 'wllama' ? 'wllama' : 'lmstudio';
+    currentSettings.engineMode = mode;
+    applyEngineModeVisibility(mode);
+    await chrome.storage.local.set({ engineMode: mode });
+    if (mode === 'wllama') {
+      await refreshWllamaStatus();
+    } else {
+      await checkConnection(true);
+    }
+  }
+
+  if (btnModeLmStudio) {
+    btnModeLmStudio.addEventListener('click', () => switchEngineMode('lmstudio'));
+  }
+  if (btnModeWllama) {
+    btnModeWllama.addEventListener('click', () => switchEngineMode('wllama'));
+  }
+  if (settingEngineMode) {
+    settingEngineMode.addEventListener('change', () => switchEngineMode(settingEngineMode.value));
+  }
+
+  if (btnWllamaLoad) {
+    btnWllamaLoad.addEventListener('click', async () => {
+      const modelUrl = getSelectedWllamaModelUrl();
+      const useWebGpu = settingWllamaWebGpu ? settingWllamaWebGpu.checked : true;
+      btnWllamaLoad.disabled = true;
+      try {
+        await chrome.storage.local.set({
+          wllamaModelUrl: modelUrl,
+          wllamaUseWebGpu: useWebGpu
+        });
+        currentSettings.wllamaModelUrl = modelUrl;
+        currentSettings.wllamaUseWebGpu = useWebGpu;
+        const res = await chrome.runtime.sendMessage({
+          type: 'WLLAMA_LOAD_MODEL',
+          modelUrl,
+          useWebGpu
+        });
+        if (res && res.ok) {
+          await refreshWllamaStatus();
+        } else if (res && res.error) {
+          wllamaStatusText.textContent = `⚠️ ${res.error}`;
+        }
+      } catch (err) {
+        wllamaStatusText.textContent = `⚠️ ${err.message}`;
+      } finally {
+        btnWllamaLoad.disabled = false;
+      }
+    });
+  }
+
+  if (btnWllamaUnload) {
+    btnWllamaUnload.addEventListener('click', async () => {
+      await chrome.runtime.sendMessage({ type: 'WLLAMA_UNLOAD_MODEL' });
+      await refreshWllamaStatus();
+    });
+  }
+
+  if (btnWllamaClearCache) {
+    btnWllamaClearCache.addEventListener('click', async () => {
+      const confirmMsg = currentUiLang === 'en'
+        ? 'Clear cached GGUF models from browser OPFS storage?'
+        : 'ブラウザ (OPFS) にキャッシュされた GGUF モデルを削除しますか？';
+      if (!confirm(confirmMsg)) return;
+      await chrome.runtime.sendMessage({ type: 'WLLAMA_CLEAR_CACHE' });
+      await refreshWllamaStatus();
+    });
+  }
+
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message && message.type === 'WLLAMA_PROGRESS' && message.state) {
+      renderWllamaState(message.state);
+    }
+  });
+
   // UI Language Switch Handler
   settingUiLang.addEventListener('change', () => {
     applyUiLanguage(settingUiLang.value);
@@ -451,11 +684,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       chosenModel = settingModelCustom.value.trim();
     }
 
+    const chosenEngineMode = settingEngineMode ? settingEngineMode.value : (currentSettings.engineMode || 'lmstudio');
+    const chosenWllamaUrl = getSelectedWllamaModelUrl();
+    const chosenWllamaWebGpu = settingWllamaWebGpu ? settingWllamaWebGpu.checked : true;
+
     const updated = {
       uiLang: settingUiLang.value,
+      engineMode: chosenEngineMode,
       baseUrl: settingBaseUrl.value.trim(),
       model: chosenModel,
       apiMode: settingApiMode.value,
+      wllamaModelUrl: chosenWllamaUrl,
+      wllamaUseWebGpu: chosenWllamaWebGpu,
       selectionMode: settingSelectionMode.value,
       autoSwitchJaEn: settingAutoSwitchJaEn.checked,
       temperature: parseFloat(settingTemperature.value) || 0,
@@ -469,17 +709,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await chrome.storage.local.set(updated);
     currentSettings = { ...currentSettings, ...updated };
+    applyEngineModeVisibility(chosenEngineMode);
 
     settingsSaveStatus.textContent = PlamoI18n.t('saveStatusSuccess', {}, currentUiLang);
     settingsSaveStatus.style.display = 'inline';
     setTimeout(() => {
       settingsSaveStatus.style.display = 'none';
     }, 2000);
+
+    if (chosenEngineMode === 'wllama') {
+      refreshWllamaStatus();
+    } else {
+      checkConnection(true);
+    }
   });
 
   // -------------------------------------------------------------
   // Startup
   // -------------------------------------------------------------
   await loadSettings();
-  checkConnection(true); // Silent connection check on popup open
+  if ((currentSettings.engineMode || 'lmstudio') === 'wllama') {
+    refreshWllamaStatus();
+  } else {
+    checkConnection(true); // Silent connection check on popup open
+  }
 });

@@ -33,6 +33,10 @@
 
     <!-- Quick Tools Bar -->
     <section class="quick-tools-bar">
+      <div class="engine-mode-pills" role="group" aria-label="Inference Engine Mode">
+        <button id="btnModeLmStudio" class="mode-pill active" data-mode="lmstudio" data-i18n="modeSwitchLmStudio" title="Mode A: LM Studio">🖥️ LM Studio</button>
+        <button id="btnModeWllama" class="mode-pill" data-mode="wllama" data-i18n="modeSwitchWllama" title="Mode B: In-Browser Wllama 0.8B">🌐 ブラウザ内蔵 (0.8B)</button>
+      </div>
       <button id="btnGrabSelection" class="btn-tool" data-i18n-title="btnGrabSelectionTitle" title="閲覧中タブの選択テキストを取得して翻訳">
         <span>📥</span> <span data-i18n="btnGrabSelection">選択テキストを取得</span>
       </button>
@@ -170,35 +174,79 @@
           <span class="setting-desc" data-i18n="descUiLang">ポップアップや画面内翻訳カードの表示言語を切り替えます</span>
         </div>
 
-        <!-- LM Studio Server URL -->
+        <!-- Inference Engine Mode (Mode A vs Mode B) -->
         <div class="setting-item">
-          <label for="settingBaseUrl" data-i18n="labelBaseUrl">LM Studio サーバー URL</label>
-          <div class="input-with-button">
-            <input type="text" id="settingBaseUrl" value="http://localhost:1234" class="text-input">
-            <button id="btnTestConnection" class="btn-secondary" data-i18n="btnTestConnection">🔌 接続テスト</button>
+          <label for="settingEngineMode" data-i18n="labelEngineMode">推論エンジン (Inference Mode)</label>
+          <select id="settingEngineMode" class="select-input">
+            <option value="lmstudio" data-i18n="optEngineLmStudio">モードA: LM Studio ローカルサーバー</option>
+            <option value="wllama" data-i18n="optEngineWllama">モードB: ブラウザ内蔵 Wllama 0.8B (Offscreen)</option>
+          </select>
+          <span class="setting-desc" data-i18n="descEngineMode">LM Studio サーバー経由か、ブラウザ単体 (Wllama WebGPU/WASM) で推論するかを切り替えます</span>
+        </div>
+
+        <!-- Mode A: LM Studio Settings Group -->
+        <div id="lmStudioSettingsGroup" class="engine-settings-group">
+          <!-- LM Studio Server URL -->
+          <div class="setting-item">
+            <label for="settingBaseUrl" data-i18n="labelBaseUrl">LM Studio サーバー URL</label>
+            <div class="input-with-button">
+              <input type="text" id="settingBaseUrl" value="http://localhost:1234" class="text-input">
+              <button id="btnTestConnection" class="btn-secondary" data-i18n="btnTestConnection">🔌 接続テスト</button>
+            </div>
+            <span class="setting-desc" data-i18n="descBaseUrl">LM Studio の Local Server (デフォルトポート 1234)</span>
           </div>
-          <span class="setting-desc" data-i18n="descBaseUrl">LM Studio の Local Server (デフォルトポート 1234)</span>
+
+          <!-- Model Selection -->
+          <div class="setting-item">
+            <label for="settingModel" data-i18n="labelModel">使用モデル</label>
+            <select id="settingModel" class="select-input">
+              <option value="" data-i18n="optModelAuto">(ロード済みモデルを自動検出)</option>
+            </select>
+            <input type="text" id="settingModelCustom" data-i18n-placeholder="placeholderModelCustom" placeholder="モデル識別名を手動入力..." class="text-input"
+              style="margin-top: 6px; display: none;">
+            <span class="setting-desc" data-i18n="descModel">LM Studio にロードされているモデルを選択または手動指定</span>
+          </div>
+
+          <!-- API Mode -->
+          <div class="setting-item">
+            <label for="settingApiMode" data-i18n="labelApiMode">API 呼び出しモード</label>
+            <select id="settingApiMode" class="select-input">
+              <option value="completions" data-i18n="optApiModeCompletions">Completions API (/v1/completions) - PFML3推奨</option>
+              <option value="chat" data-i18n="optApiModeChat">Chat API (/v1/chat/completions)</option>
+            </select>
+            <span class="setting-desc" data-i18n="descApiMode">PLaMo 3 Translate は PFML3 形式の Completions 呼び出しで最も高い精度を発揮します</span>
+          </div>
         </div>
 
-        <!-- Model Selection -->
-        <div class="setting-item">
-          <label for="settingModel" data-i18n="labelModel">使用モデル</label>
-          <select id="settingModel" class="select-input">
-            <option value="" data-i18n="optModelAuto">(ロード済みモデルを自動検出)</option>
-          </select>
-          <input type="text" id="settingModelCustom" data-i18n-placeholder="placeholderModelCustom" placeholder="モデル識別名を手動入力..." class="text-input"
-            style="margin-top: 6px; display: none;">
-          <span class="setting-desc" data-i18n="descModel">LM Studio にロードされているモデルを選択または手動指定</span>
-        </div>
+        <!-- Mode B: In-Browser Wllama Settings Group -->
+        <div id="wllamaSettingsGroup" class="engine-settings-group" style="display: none;">
+          <div class="setting-item">
+            <label for="settingWllamaModel" data-i18n="labelWllamaModel">ブラウザ内蔵モデル (PLaMo 3 Translate 0.8B GGUF)</label>
+            <select id="settingWllamaModel" class="select-input"></select>
+            <input type="text" id="settingWllamaModelCustom" data-i18n-placeholder="placeholderWllamaUrl" placeholder="GGUF モデルの直リンク URL を入力..." class="text-input"
+              style="margin-top: 6px; display: none;">
+            <span class="setting-desc" data-i18n="descWllamaModel">初回のみ Hugging Face からダウンロードされ、ブラウザの OPFS にキャッシュされます</span>
+          </div>
 
-        <!-- API Mode -->
-        <div class="setting-item">
-          <label for="settingApiMode" data-i18n="labelApiMode">API 呼び出しモード</label>
-          <select id="settingApiMode" class="select-input">
-            <option value="completions" data-i18n="optApiModeCompletions">Completions API (/v1/completions) - PFML3推奨</option>
-            <option value="chat" data-i18n="optApiModeChat">Chat API (/v1/chat/completions)</option>
-          </select>
-          <span class="setting-desc" data-i18n="descApiMode">PLaMo 3 Translate は PFML3 形式の Completions 呼び出しで最も高い精度を発揮します</span>
+          <div class="setting-item">
+            <label class="checkbox-label">
+              <input type="checkbox" id="settingWllamaWebGpu" checked>
+              <span data-i18n="labelWllamaWebGpu">WebGPU ハードウェアアクセラレーションを有効化 (推奨)</span>
+            </label>
+            <span class="setting-desc" data-i18n="descWllamaWebGpu">非対応環境または初期化失敗時は自動的に WASM (CPU) へフォールバックします</span>
+          </div>
+
+          <div class="wllama-control-box">
+            <div class="wllama-btn-row">
+              <button type="button" id="btnWllamaLoad" class="btn-secondary" data-i18n="btnWllamaLoad">📥 モデルをロード / DL</button>
+              <button type="button" id="btnWllamaUnload" class="btn-secondary" data-i18n="btnWllamaUnload">⏹ メモリ解放</button>
+              <button type="button" id="btnWllamaClearCache" class="btn-secondary" data-i18n="btnWllamaClearCache">🗑 キャッシュ削除</button>
+            </div>
+            <div id="wllamaProgressWrap" class="wllama-progress-wrap" style="display: none;">
+              <div id="wllamaProgressBar" class="wllama-progress-bar" style="width: 0%;"></div>
+            </div>
+            <div id="wllamaStatusText" class="wllama-status-text" data-i18n="wllamaStatusIdle">未ロード（翻訳時または上のボタンでロードされます）</div>
+          </div>
         </div>
 
         <!-- In-Page Selection Popup Mode -->
@@ -244,8 +292,8 @@
 
     <!-- Footer -->
     <footer class="app-footer">
-      <span>PLaMo-3-Translate × LM Studio</span>
-      <span class="footer-version">v1.0.0</span>
+      <span>PLaMo-3-Translate × LM Studio / Wllama</span>
+      <span class="footer-version">v1.1.0</span>
     </footer>
   </div>
 

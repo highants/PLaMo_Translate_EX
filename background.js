@@ -25,7 +25,7 @@ async function setupContextMenus() {
       });
     });
   } catch (err) {
-    console.error('Failed to setup context menus:', err);
+    console.warn('Failed to setup context menus:', err);
   }
 }
 
@@ -66,9 +66,65 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
-// 3. Message Router
+// 3. Offscreen Document Management for Mode B (In-Browser Wllama)
+const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
+let creatingOffscreenPromise = null;
+
+async function ensureOffscreenDocument() {
+  const offscreenUrl = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
+
+  if (chrome.runtime.getContexts) {
+    const existingContexts = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT'],
+      documentUrls: [offscreenUrl]
+    });
+    if (existingContexts && existingContexts.length > 0) {
+      return;
+    }
+  } else if (chrome.offscreen && chrome.offscreen.hasDocument) {
+    const hasDoc = await chrome.offscreen.hasDocument();
+    if (hasDoc) return;
+  }
+
+  if (creatingOffscreenPromise) {
+    await creatingOffscreenPromise;
+    return;
+  }
+
+  creatingOffscreenPromise = chrome.offscreen.createDocument({
+    url: OFFSCREEN_DOCUMENT_PATH,
+    reasons: ['WORKERS', 'BLOBS'],
+    justification: 'Run Wllama (llama.cpp WebAssembly/WebGPU) in-browser inference and OPFS model caching'
+  });
+
+  try {
+    await creatingOffscreenPromise;
+  } catch (err) {
+    const errMsg = String(err?.message || err);
+    if (!errMsg.includes('single offscreen document') && !errMsg.includes('already exists')) {
+      throw err;
+    }
+  } finally {
+    creatingOffscreenPromise = null;
+  }
+}
+
+async function sendToOffscreen(payload) {
+  await ensureOffscreenDocument();
+  return await chrome.runtime.sendMessage({
+    ...payload,
+    target: 'offscreen'
+  });
+}
+
+// 4. Message Router
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || !message.type) return false;
+
+  // Ignore messages targeted at the Offscreen Document or broadcast progress events
+  if (message.target === 'offscreen' || message.type === 'WLLAMA_PROGRESS') {
+    return false;
+  }
 
   // Handle asynchronous requests via IIFE
   (async () => {
@@ -80,6 +136,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const baseUrl = message.baseUrl || stored.baseUrl || DEFAULT_SETTINGS.baseUrl;
           const result = await fetchLmStudioModels(baseUrl);
           sendResponse(result);
+          break;
+        }
+
+        case 'WLLAMA_GET_STATUS': {
+          const res = await sendToOffscreen({ type: 'OFFSCREEN_WLLAMA_STATUS' });
+          sendResponse(res);
+          break;
+        }
+
+        case 'WLLAMA_LOAD_MODEL': {
+          const stored = await chrome.storage.local.get(DEFAULT_SETTINGS);
+          const res = await sendToOffscreen({
+            type: 'OFFSCREEN_WLLAMA_LOAD_MODEL',
+            modelUrl: message.modelUrl || stored.wllamaModelUrl || DEFAULT_SETTINGS.wllamaModelUrl,
+            useWebGpu: message.useWebGpu !== undefined ? message.useWebGpu : stored.wllamaUseWebGpu,
+            nCtx: message.nCtx || stored.wllamaContextSize || DEFAULT_SETTINGS.wllamaContextSize
+          });
+          sendResponse(res);
+          break;
+        }
+
+        case 'WLLAMA_UNLOAD_MODEL': {
+          const res = await sendToOffscreen({ type: 'OFFSCREEN_WLLAMA_UNLOAD_MODEL' });
+          sendResponse(res);
+          break;
+        }
+
+        case 'WLLAMA_CLEAR_CACHE': {
+          const res = await sendToOffscreen({ type: 'OFFSCREEN_WLLAMA_CLEAR_CACHE' });
+          sendResponse(res);
           break;
         }
 
@@ -99,6 +185,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const form = message.form !== undefined ? message.form : settings.form;
           const context = message.context !== undefined ? message.context : settings.context;
           const glossaryText = message.glossaryText !== undefined ? message.glossaryText : settings.glossaryText;
+          const engineMode = message.engineMode || settings.engineMode || 'lmstudio';
 
           const effectiveTargetLang = resolveTargetLang(text, sourceLang, targetLang, autoSwitchJaEn);
 
@@ -111,25 +198,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             glossary: glossaryText
           });
 
-          const res = await executePlamoTranslation({
-            baseUrl: message.baseUrl || settings.baseUrl,
-            model: message.model !== undefined ? message.model : settings.model,
-            apiMode: message.apiMode || settings.apiMode,
-            prompt: pfmlPrompt,
-            effectiveTargetLang,
-            sourceLang,
-            temperature: message.temperature !== undefined ? message.temperature : settings.temperature,
-            maxTokens: message.maxTokens !== undefined ? message.maxTokens : settings.maxTokens
-          });
+          if (engineMode === 'wllama') {
+            const offRes = await sendToOffscreen({
+              type: 'OFFSCREEN_WLLAMA_TRANSLATE',
+              prompt: pfmlPrompt,
+              modelUrl: message.wllamaModelUrl || settings.wllamaModelUrl || DEFAULT_SETTINGS.wllamaModelUrl,
+              useWebGpu: message.wllamaUseWebGpu !== undefined ? message.wllamaUseWebGpu : settings.wllamaUseWebGpu,
+              nCtx: settings.wllamaContextSize || DEFAULT_SETTINGS.wllamaContextSize,
+              temperature: message.temperature !== undefined ? message.temperature : settings.temperature,
+              maxTokens: message.maxTokens !== undefined ? message.maxTokens : settings.maxTokens
+            });
 
-          sendResponse({
-            ok: true,
-            translatedText: res.translatedText,
-            prompt: pfmlPrompt,
-            effectiveTargetLang,
-            modelUsed: res.modelUsed,
-            apiModeUsed: res.apiModeUsed
-          });
+            if (!offRes || !offRes.ok) {
+              throw new Error(offRes ? offRes.error : 'Wllama (Offscreen) 推論に失敗しました');
+            }
+
+            sendResponse({
+              ok: true,
+              translatedText: offRes.translatedText,
+              prompt: pfmlPrompt,
+              effectiveTargetLang,
+              modelUsed: offRes.modelUsed,
+              apiModeUsed: offRes.apiModeUsed
+            });
+          } else {
+            const res = await executePlamoTranslation({
+              baseUrl: message.baseUrl || settings.baseUrl,
+              model: message.model !== undefined ? message.model : settings.model,
+              apiMode: message.apiMode || settings.apiMode,
+              prompt: pfmlPrompt,
+              effectiveTargetLang,
+              sourceLang,
+              temperature: message.temperature !== undefined ? message.temperature : settings.temperature,
+              maxTokens: message.maxTokens !== undefined ? message.maxTokens : settings.maxTokens
+            });
+
+            sendResponse({
+              ok: true,
+              translatedText: res.translatedText,
+              prompt: pfmlPrompt,
+              effectiveTargetLang,
+              modelUsed: res.modelUsed,
+              apiModeUsed: res.apiModeUsed
+            });
+          }
           break;
         }
 
@@ -151,7 +263,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
       }
     } catch (err) {
-      console.error('Background processing error:', err);
+      console.warn('Background processing error:', err);
       sendResponse({
         ok: false,
         error: err.message || String(err)
