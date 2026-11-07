@@ -12,21 +12,35 @@ Translate sensitive business documents, source code, and confidential text **100
 
 This extension provides two distinct local inference engines tailored to different hardware environments and workflows. Switch between them instantly via the popup tabs or the Settings panel:
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        PLaMo Translate (Chrome MV3)                    │
-│                                                                        │
-│     [Mode A: LM Studio Connection]        [Mode B: In-Browser Wllama]  │
-│       External Desktop App (0.8B-31B)        Zero Setup Standalone     │
-│                                                                        │
-│            Background Worker                     Offscreen Document    │
-│                   │                                      │             │
-│                   ▼                                      ▼             │
-│        LM Studio Local Server              WebAssembly / WebGPU (wllama│
-│        http://localhost:1234                             │             │
-│                   │                                      ▼             │
-│         GPU VRAM / llama.cpp                OPFS Fast Local Cache      │
-└────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph EXT["PLaMo Translate (Chrome MV3)"]
+        direction TB
+        UI["UI (Popup / Content Script / Tab)"]
+        
+        subgraph MODEA["Mode A: LM Studio Connection"]
+            direction TB
+            BG["Background Service Worker"]
+            LMS["LM Studio Local Server<br/>http://localhost:1234"]
+            LLM_A["llama.cpp / GPU VRAM<br/>(0.8B / 2B / 8B / 31B)"]
+            
+            BG -->|HTTP / PFML3| LMS
+            LMS --> LLM_A
+        end
+
+        subgraph MODEB["Mode B: In-Browser Wllama"]
+            direction TB
+            OFF["Offscreen Document<br/>(Mutex Inference Queue)"]
+            WLLAMA["Wllama Engine<br/>(WebAssembly / WebGPU)"]
+            OPFS[("OPFS Fast Local Storage<br/>(0.8B GGUF)")]
+            
+            OFF --> WLLAMA
+            WLLAMA <-->|Direct Zero-Copy Read| OPFS
+        end
+
+        UI -->|chrome.runtime.sendMessage| BG
+        BG -->|chrome.offscreen.sendMessage| OFF
+    end
 ```
 
 | Feature | Mode A: LM Studio Connection | Mode B: In-Browser Wllama |

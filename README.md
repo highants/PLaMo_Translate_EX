@@ -12,21 +12,35 @@ Preferred Networks (PFN) がオープンウェイトとして公開した、世�
 
 本拡張機能は、利用シーンや PC スペックに応じて柔軟に使い分けられる **2 つのローカル推論エンジン** を搭載しています。ポップアップの切替タブや設定画面からいつでもワンクリックで切り替え可能です。
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        PLaMo Translate (Chrome MV3)                    │
-│                                                                        │
-│   [モードA: LM Studio 接続]             [モードB: ブラウザ内蔵 Wllama]       │
-│    外部アプリ連携 (0.8B〜31B)              拡張機能単体で完結 (0.8B)          │
-│                                                                        │
-│        Background Worker                     Offscreen Document        │
-│               │                                      │                 │
-│               ▼                                      ▼                 │
-│    LM Studio ローカルサーバー              WebAssembly / WebGPU (wllama)       │
-│    http://localhost:1234                             │                 │
-│               │                                      ▼                 │
-│     GPU VRAM / llama.cpp                 OPFS ローカル高速キャッシュ     │
-└────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph EXT["PLaMo Translate (Chrome MV3)"]
+        direction TB
+        UI["UI (Popup / Content Script / Tab)"]
+        
+        subgraph MODEA["モードA: LM Studio 連携"]
+            direction TB
+            BG["Background Service Worker"]
+            LMS["LM Studio ローカルサーバー<br/>http://localhost:1234"]
+            LLM_A["llama.cpp / GPU VRAM<br/>(0.8B / 2B / 8B / 31B)"]
+            
+            BG -->|HTTP / PFML3| LMS
+            LMS --> LLM_A
+        end
+
+        subgraph MODEB["モードB: ブラウザ内蔵 Wllama"]
+            direction TB
+            OFF["Offscreen Document<br/>(Mutex 排他キュー)"]
+            WLLAMA["Wllama Engine<br/>(WebAssembly / WebGPU)"]
+            OPFS[("OPFS ローカル高速キャッシュ<br/>(0.8B GGUF)")]
+            
+            OFF --> WLLAMA
+            WLLAMA <-->|オンメモリ即時ロード| OPFS
+        end
+
+        UI -->|chrome.runtime.sendMessage| BG
+        BG -->|chrome.offscreen.sendMessage| OFF
+    end
 ```
 
 | 項目 | モードA: LM Studio ローカルサーバー接続 | モードB: ブラウザ内蔵 Wllama 推論 |
