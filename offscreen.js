@@ -203,7 +203,7 @@ async function ensureModelLoaded({ modelUrl, useWebGpu = true, nCtx = 2048 }) {
       };
 
       let instance = new Wllama(WASM_PATH_CONFIG, {
-        suppressNativeLog: false,
+        suppressNativeLog: true,
         allowOffline: true
       });
       instance.setCompat(null);
@@ -245,7 +245,7 @@ async function ensureModelLoaded({ modelUrl, useWebGpu = true, nCtx = 2048 }) {
           console.warn('[Offscreen] WebGPU loading failed, falling back to CPU:', gpuErr);
           await instance.exit().catch(() => { });
           instance = new Wllama(WASM_PATH_CONFIG, {
-            suppressNativeLog: false,
+            suppressNativeLog: true,
             allowOffline: true
           });
           instance.setCompat(null);
