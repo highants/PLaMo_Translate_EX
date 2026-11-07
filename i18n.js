@@ -18,9 +18,9 @@
       btnCloseSettings: '設定を閉じる',
 
       // Quick Tools Bar
-      btnGrabSelection: '選択テキストを取得',
+      btnGrabSelection: '選択テキスト',
       btnGrabSelectionTitle: '閲覧中タブの選択テキストを取得して翻訳',
-      btnPageTranslate: 'ページ全体を翻訳',
+      btnPageTranslate: 'ページ全体翻訳',
       btnPageTranslateTitle: '閲覧中タブのWebページ全体を翻訳',
 
       // Language & Style Controls
@@ -72,7 +72,7 @@
       optEngineWllama: 'モードB: ブラウザ内蔵 Wllama 0.8B (Offscreen)',
       descEngineMode: 'LM Studio サーバー経由か、ブラウザ単体 (Wllama WebGPU/WASM) で推論するかを切り替えます',
       modeSwitchLmStudio: '🖥️ LM Studio',
-      modeSwitchWllama: '🌐 ブラウザ内蔵 (0.8B)',
+      modeSwitchWllama: '🌐 ブラウザ内蔵',
 
       labelWllamaModel: 'ブラウザ内蔵モデル (PLaMo 3 Translate 0.8B GGUF)',
       placeholderWllamaUrl: 'GGUF モデルの直リンク URL を入力...',

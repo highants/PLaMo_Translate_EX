@@ -69,8 +69,10 @@ body {
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.5;
-  width: 480px;
-  min-height: 560px;
+  width: 500px;
+  min-height: 580px;
+  max-height: 600px;
+  overflow-y: auto;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
@@ -212,7 +214,8 @@ body {
 .quick-tools-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: nowrap;
 }
 
 .btn-tool {
@@ -220,10 +223,11 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
+  gap: 4px;
+  padding: 5px 8px;
+  font-size: 11.5px;
   font-weight: 600;
+  white-space: nowrap;
   background: var(--bg-card);
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
@@ -756,6 +760,7 @@ body {
   border-radius: var(--radius-sm);
   padding: 2px;
   gap: 2px;
+  flex-shrink: 0;
 }
 
 .mode-pill {
@@ -764,7 +769,7 @@ body {
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 600;
-  padding: 4px 8px;
+  padding: 4px 6px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
