@@ -64,20 +64,29 @@ function broadcastProgress(force = false) {
 }
 
 /**
- * Extract human-readable filename from a full model URL
+ * Extract human-readable filename or concise model tag
  * @param {string} url
  * @returns {string}
  */
 function getShortModelName(url) {
-  if (!url || typeof url !== 'string') return '';
+  if (!url || typeof url !== 'string') return 'PLaMo-3';
   try {
     const parsed = new URL(url);
     const pathname = parsed.pathname;
     const parts = pathname.split('/').filter(Boolean);
-    return parts.length > 0 ? parts[parts.length - 1] : url;
+    const filename = parts.length > 0 ? parts[parts.length - 1] : url;
+    // Extract concise name like "PLaMo-3 0.8B (Q4_K_M)"
+    const match = filename.match(/plamo-3.*?-0\.8b-([a-zA-Z0-9_]+)\.gguf/i);
+    if (match) {
+      return `PLaMo-3 0.8B (${match[1]})`;
+    }
+    return filename.replace(/\.gguf$/i, '');
   } catch {
-    const parts = url.split('/').filter(Boolean);
-    return parts.length > 0 ? parts[parts.length - 1] : url;
+    const match = url.match(/plamo-3.*?-0\.8b-([a-zA-Z0-9_]+)\.gguf/i);
+    if (match) {
+      return `PLaMo-3 0.8B (${match[1]})`;
+    }
+    return 'PLaMo-3 0.8B';
   }
 }
 
@@ -470,8 +479,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           ok: true,
           translatedText,
           rawText,
-          modelUsed: `Wllama: ${getShortModelName(loadedModelUrl)} (${wllamaState.backend || 'WASM'})`,
-          apiModeUsed: `wllama-${(wllamaState.backend || 'wasm').toLowerCase()}`
+          modelUsed: `${getShortModelName(loadedModelUrl)} [${wllamaState.backend || 'WASM'}]`,
+          apiModeUsed: 'wllama'
         };
       })
         .then(result => sendResponse(result))

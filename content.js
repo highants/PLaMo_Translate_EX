@@ -316,7 +316,9 @@
         `;
 
         if (statusEl) {
-          statusEl.textContent = `${response.modelUsed || 'PLaMo'} (${response.apiModeUsed || 'completions'})`;
+          const rawStatus = response.modelUsed || 'PLaMo';
+          statusEl.textContent = rawStatus;
+          statusEl.title = `${rawStatus} (${response.apiModeUsed || 'completions'})`;
         }
 
         // Copy button action
