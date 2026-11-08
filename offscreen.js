@@ -324,82 +324,14 @@ async function ensureModelLoaded({ modelUrl, useWebGpu = true, nCtx = 2048 }) {
 // Mutex queue to serialize inference requests and prevent context corruption
 let inferenceQueue = Promise.resolve();
 
-// -------------------------------------------------------------
-// Foreground Process Priority Booster (Anti-EcoQoS / Anti-Throttling)
-// When popup.html is closed, Chrome demotes the extension renderer process
-// (which hosts offscreen.html and the Wllama Web Worker) to Background Priority
-// (Windows EcoQoS / Efficiency Mode + Background Timer Throttling).
-// Keeping an inaudible Web Audio stream + Web Lock active strictly during
-// active inference forces Chromium to keep this renderer in ProcessPriority::kForeground.
-// -------------------------------------------------------------
-let priorityAudioCtx = null;
-let prioritySuspendTimer = null;
-let activePriorityCount = 0;
-
-async function engageForegroundPriority() {
-  activePriorityCount++;
-  if (prioritySuspendTimer) {
-    clearTimeout(prioritySuspendTimer);
-    prioritySuspendTimer = null;
-  }
-  try {
-    const AudioCtx = globalThis.AudioContext || globalThis.webkitAudioContext;
-    if (AudioCtx) {
-      if (!priorityAudioCtx) {
-        priorityAudioCtx = new AudioCtx();
-        const osc = priorityAudioCtx.createOscillator();
-        const gain = priorityAudioCtx.createGain();
-        // Non-zero sub-audible gain (-100 dB) prevents Chromium's silent-stream culling
-        gain.gain.value = 0.00001;
-        osc.frequency.value = 1;
-        osc.connect(gain);
-        gain.connect(priorityAudioCtx.destination);
-        osc.start();
-      }
-      if (priorityAudioCtx.state === 'suspended') {
-        await priorityAudioCtx.resume().catch(() => {});
-      }
-    }
-  } catch {
-    // Ignore audio context errors on headless environments
-  }
-}
-
-function releaseForegroundPriority() {
-  activePriorityCount = Math.max(0, activePriorityCount - 1);
-  if (activePriorityCount === 0 && priorityAudioCtx) {
-    if (prioritySuspendTimer) clearTimeout(prioritySuspendTimer);
-    prioritySuspendTimer = setTimeout(() => {
-      if (activePriorityCount === 0 && priorityAudioCtx && priorityAudioCtx.state === 'running') {
-        priorityAudioCtx.suspend().catch(() => {});
-      }
-    }, 2500);
-  }
-}
-
-async function withForegroundPriority(task) {
-  await engageForegroundPriority();
-  try {
-    if (navigator.locks && typeof navigator.locks.request === 'function') {
-      return await navigator.locks.request('plamo_wllama_foreground_inference', async () => {
-        return await task();
-      });
-    }
-    return await task();
-  } finally {
-    releaseForegroundPriority();
-  }
-}
-
 /**
- * Execute an inference task exclusively via the mutex queue with foreground priority
+ * Execute an inference task exclusively via the mutex queue
  * @template T
  * @param {() => Promise<T>} task
  * @returns {Promise<T>}
  */
 function runInferenceLocked(task) {
-  const wrapped = () => withForegroundPriority(task);
-  const next = inferenceQueue.then(wrapped, wrapped);
+  const next = inferenceQueue.then(task, task);
   inferenceQueue = next.catch(() => { });
   return next;
 }
