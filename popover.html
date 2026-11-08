@@ -35,6 +35,7 @@
       display: flex;
       flex-direction: column;
       box-sizing: border-box;
+      transition: background 0.2s ease, border-color 0.2s ease, border-radius 0.2s ease;
     }
     body.is-window-mode .plamo-ext-popover-card {
       width: 100vw !important;
@@ -47,6 +48,101 @@
       .plamo-ext-popover-card {
         border-color: #334155;
       }
+    }
+
+    /* Minimal Pill State during Translation in iframe mode */
+    body:not(.is-window-mode) .plamo-ext-popover-card.is-translating {
+      border-radius: 20px !important;
+      background: #ffffff !important;
+      padding: 0 !important;
+      border: 1px solid #cbd5e1 !important;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12) !important;
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not(.is-window-mode) .plamo-ext-popover-card.is-translating {
+        background: #1e293b !important;
+        border-color: #475569 !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+      }
+    }
+    body:not(.is-window-mode) .plamo-ext-popover-card.is-translating .plamo-ext-card-header,
+    body:not(.is-window-mode) .plamo-ext-popover-card.is-translating .plamo-ext-card-footer {
+      display: none !important;
+    }
+    body:not(.is-window-mode) .plamo-ext-popover-card.is-translating .plamo-ext-card-body {
+      max-height: none !important;
+      overflow: hidden !important;
+      padding: 6px 12px !important;
+    }
+
+    /* Sleek Loading Indicator Bar */
+    .plamo-ext-indicator-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #334155;
+      line-height: 1.4;
+      user-select: none;
+    }
+    @media (prefers-color-scheme: dark) {
+      .plamo-ext-indicator-bar {
+        color: #f1f5f9;
+      }
+    }
+    .plamo-ext-indicator-bar .plamo-ext-brand-icon {
+      font-size: 14px;
+      line-height: 1;
+    }
+    .plamo-ext-indicator-bar .plamo-ext-spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid #e2e8f0;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: plamo-spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @media (prefers-color-scheme: dark) {
+      .plamo-ext-indicator-bar .plamo-ext-spinner {
+        border-color: #334155;
+        border-top-color: #60a5fa;
+      }
+    }
+    .plamo-ext-indicator-bar .plamo-ext-loading-text {
+      flex: 1 1 auto;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 240px;
+    }
+    .plamo-ext-btn-cancel-translating {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 2px 5px;
+      border-radius: 4px;
+      transition: background 0.15s, color 0.15s;
+      margin-left: 4px;
+    }
+    .plamo-ext-btn-cancel-translating:hover {
+      background: #fee2e2;
+      color: #ef4444;
+    }
+    @media (prefers-color-scheme: dark) {
+      .plamo-ext-btn-cancel-translating:hover {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+    }
+    @keyframes plamo-spin {
+      to { transform: rotate(360deg); }
     }
     .plamo-ext-card-body {
       max-height: 280px;

@@ -61,16 +61,36 @@
       .replace(/'/g, '&#039;');
   }
 
-  // 3. Post height changes to parent content script (iframe mode only)
-  function notifyHeight() {
+  // 3. Post size changes to parent content script (iframe mode only)
+  function notifyDimensions() {
     if (isWindowMode) return;
     if (!cardEl) return;
-    const height = Math.min(420, Math.max(140, cardEl.offsetHeight));
-    window.parent.postMessage({ type: 'PLAMO_RESIZE', height }, '*');
+    const isTranslating = cardEl.classList.contains('is-translating');
+    const minH = isTranslating ? 36 : 120;
+    const height = Math.min(450, Math.max(minH, cardEl.offsetHeight));
+    const width = isTranslating ? 300 : 400;
+    window.parent.postMessage({ type: 'PLAMO_RESIZE', height, width, isTranslating }, '*');
+  }
+
+  function notifyHeight() {
+    notifyDimensions();
+  }
+
+  // Active focus retention to guarantee Chromium grants foreground priority
+  function requestFocus() {
+    try {
+      window.focus();
+      if (cardEl && typeof cardEl.focus === 'function') {
+        cardEl.focus();
+      }
+      if (!isWindowMode) {
+        window.parent.postMessage({ type: 'PLAMO_REQUEST_FOCUS' }, '*');
+      }
+    } catch {}
   }
 
   const resizeObserver = new ResizeObserver(() => {
-    notifyHeight();
+    notifyDimensions();
   });
   resizeObserver.observe(cardEl);
 
@@ -115,6 +135,21 @@
   }
 
   // 5. Execute Translation
+  let focusRetentionTimer = null;
+
+  function startFocusRetention() {
+    stopFocusRetention();
+    requestFocus();
+    focusRetentionTimer = setInterval(requestFocus, 120);
+  }
+
+  function stopFocusRetention() {
+    if (focusRetentionTimer) {
+      clearInterval(focusRetentionTimer);
+      focusRetentionTimer = null;
+    }
+  }
+
   async function performTranslate() {
     const requestId = ++activeRequestId;
     const uiLang = (typeof PlamoI18n !== 'undefined' && PlamoI18n.resolveUiLang)
@@ -124,17 +159,38 @@
     const targetLang = targetLangSelect.value;
     const form = formSelect.value;
 
-    cardBody.innerHTML = `
-      <div class="plamo-ext-loading">
-        <div class="plamo-ext-spinner"></div>
-        <span id="loadingSpan">${t('cardTranslating')}</span>
-      </div>
-    `;
-    notifyHeight();
+    // In iframe mode, display sleek minimal operating indicator
+    if (!isWindowMode) {
+      cardEl.classList.remove('is-ready');
+      cardEl.classList.add('is-translating');
+      cardBody.innerHTML = `
+        <div class="plamo-ext-indicator-bar">
+          <span class="plamo-ext-brand-icon">🌐</span>
+          <div class="plamo-ext-spinner"></div>
+          <span id="loadingSpan" class="plamo-ext-loading-text">${t('cardTranslating')}</span>
+          <button class="plamo-ext-btn-cancel-translating" id="btnCancelTranslating" title="${t('btnCloseWindow') || '閉じる (Esc)'}">✕</button>
+        </div>
+      `;
 
-    try {
-      window.focus();
-    } catch {}
+      const btnCancel = document.getElementById('btnCancelTranslating');
+      if (btnCancel) {
+        btnCancel.addEventListener('click', (e) => {
+          e.stopPropagation();
+          stopFocusRetention();
+          window.parent.postMessage({ type: 'PLAMO_CLOSE' }, '*');
+        });
+      }
+    } else {
+      cardBody.innerHTML = `
+        <div class="plamo-ext-loading">
+          <div class="plamo-ext-spinner"></div>
+          <span id="loadingSpan">${t('cardTranslating')}</span>
+        </div>
+      `;
+    }
+
+    notifyDimensions();
+    startFocusRetention();
 
     try {
       const response = await chrome.runtime.sendMessage({
@@ -147,6 +203,10 @@
       });
 
       if (requestId !== activeRequestId) return;
+
+      stopFocusRetention();
+      cardEl.classList.remove('is-translating');
+      cardEl.classList.add('is-ready');
 
       if (response && response.ok) {
         translatedText = response.translatedText || t('outputPlaceholder');
@@ -186,6 +246,10 @@
       }
     } catch (err) {
       if (requestId !== activeRequestId) return;
+      stopFocusRetention();
+      cardEl.classList.remove('is-translating');
+      cardEl.classList.add('is-ready');
+
       cardBody.innerHTML = `
         <div class="plamo-ext-error-msg">
           <strong>${uiLang === 'en' ? 'Communication Error:' : '通信エラー:'}</strong><br>
@@ -193,7 +257,8 @@
         </div>
       `;
     } finally {
-      setTimeout(notifyHeight, 20);
+      stopFocusRetention();
+      setTimeout(notifyDimensions, 30);
     }
   }
 
@@ -214,7 +279,7 @@
         ? (uiLang === 'en' ? `Downloading model: ${percent}%...` : `モデルDL中: ${percent}%...`)
         : (uiLang === 'en' ? `Initializing model: ${percent}%...` : `モデル読込中: ${percent}%...`);
       span.textContent = label;
-      notifyHeight();
+      notifyDimensions();
     }
   });
 
@@ -287,20 +352,17 @@
   });
 
   // 8. Start
+  if (!isWindowMode) {
+    cardEl.classList.add('is-translating');
+  }
+
   chrome.storage.local.get(DEFAULT_SETTINGS, (stored) => {
     if (stored) {
       currentSettings = { ...DEFAULT_SETTINGS, ...stored };
     }
     initControls();
-    notifyHeight();
-
-    // Focus window and card container to trigger foreground priority in Chromium (Approach C)
-    try {
-      window.focus();
-      if (cardEl && typeof cardEl.focus === 'function') {
-        cardEl.focus();
-      }
-    } catch {}
+    notifyDimensions();
+    requestFocus();
 
     if (currentText) {
       performTranslate();

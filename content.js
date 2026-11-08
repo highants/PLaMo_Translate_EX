@@ -195,9 +195,16 @@
     });
   }
 
+  let popoverFocusTimers = [];
+
+  function clearPopoverFocusTimers() {
+    popoverFocusTimers.forEach(id => clearTimeout(id));
+    popoverFocusTimers = [];
+  }
+
   function openIframePopover(selectionData) {
     const text = selectionData.text;
-    const rect = selectionData.rect || { top: 120, bottom: 160, left: window.innerWidth / 2 - 200, width: 400, height: 40 };
+    const rect = selectionData.rect || { top: 120, bottom: 160, left: window.innerWidth / 2 - 150, width: 300, height: 40 };
 
     popoverCardEl = document.createElement('iframe');
     popoverCardEl.className = 'plamo-ext-popover-iframe';
@@ -211,18 +218,18 @@
     };
     popoverCardEl.src = chrome.runtime.getURL('popover.html') + '#' + encodeURIComponent(JSON.stringify(payload));
 
-    // Position Card near selection
+    // Position initial slim indicator near selection
     let cardTop = window.scrollY + rect.bottom + 8;
     let cardLeft = window.scrollX + rect.left;
 
-    // Check bottom overflow
-    const estimatedHeight = 180;
-    if (rect.bottom + estimatedHeight > window.innerHeight && rect.top > estimatedHeight) {
-      cardTop = window.scrollY + rect.top - estimatedHeight - 8;
+    // Check bottom overflow (indicator is ~44px initial)
+    const initialHeight = 44;
+    if (rect.bottom + initialHeight > window.innerHeight && rect.top > initialHeight) {
+      cardTop = window.scrollY + rect.top - initialHeight - 8;
     }
 
-    // Check right overflow & clamp to viewport
-    const cardWidth = 400;
+    // Check right overflow & clamp to viewport (initial width is ~300px)
+    const cardWidth = 300;
     const maxLeft = window.scrollX + window.innerWidth - cardWidth - 16;
     if (cardLeft > maxLeft) {
       cardLeft = maxLeft;
@@ -237,20 +244,34 @@
     // Prevent selection events inside card from bubbling
     popoverCardEl.addEventListener('mousedown', (e) => e.stopPropagation());
 
-    // Auto-focus the iframe on load to promote extension process to foreground in Chromium (Approach C)
-    popoverCardEl.addEventListener('load', () => {
+    // Focus iframe helper to guarantee Chromium treats extension process as foreground
+    const focusIframe = () => {
       try {
-        popoverCardEl.focus();
+        if (popoverCardEl) {
+          popoverCardEl.focus();
+          if (popoverCardEl.contentWindow) {
+            popoverCardEl.contentWindow.focus();
+          }
+        }
       } catch {}
+    };
+
+    popoverCardEl.addEventListener('load', () => {
+      focusIframe();
     });
 
     document.body.appendChild(popoverCardEl);
-    try {
-      popoverCardEl.focus();
-    } catch {}
+    focusIframe();
+
+    // Multi-stage focus acquisition to overcome Chromium subframe focus lag
+    clearPopoverFocusTimers();
+    popoverFocusTimers.push(setTimeout(focusIframe, 50));
+    popoverFocusTimers.push(setTimeout(focusIframe, 150));
+    popoverFocusTimers.push(setTimeout(focusIframe, 350));
   }
 
   function removePopoverCard() {
+    clearPopoverFocusTimers();
     if (popoverCardEl) {
       removeElement(popoverCardEl);
       popoverCardEl = null;
@@ -261,19 +282,39 @@
   window.addEventListener('message', (e) => {
     if (!e.data || typeof e.data !== 'object') return;
     if (e.data.type === 'PLAMO_RESIZE') {
-      if (popoverCardEl && typeof e.data.height === 'number') {
-        const newHeight = e.data.height;
-        popoverCardEl.style.height = `${newHeight}px`;
+      if (popoverCardEl) {
+        if (typeof e.data.width === 'number') {
+          popoverCardEl.style.width = `${e.data.width}px`;
+        }
+        if (typeof e.data.height === 'number') {
+          const newHeight = e.data.height;
+          popoverCardEl.style.height = `${newHeight}px`;
 
-        // Adjust top position if height expansion overflows the bottom of viewport
-        if (lastSelectionData && lastSelectionData.rect) {
-          const rect = lastSelectionData.rect;
-          const currentTop = parseFloat(popoverCardEl.style.top) || 0;
-          if (rect.top > newHeight && (currentTop + newHeight > window.scrollY + window.innerHeight - 10)) {
-            popoverCardEl.style.top = `${Math.max(window.scrollY + 10, window.scrollY + rect.top - newHeight - 8)}px`;
+          if (newHeight > 60) {
+            popoverCardEl.classList.add('is-expanded');
+          } else {
+            popoverCardEl.classList.remove('is-expanded');
+          }
+
+          // Adjust top position if height expansion overflows the bottom of viewport
+          if (lastSelectionData && lastSelectionData.rect) {
+            const rect = lastSelectionData.rect;
+            const currentTop = parseFloat(popoverCardEl.style.top) || 0;
+            if (rect.top > newHeight && (currentTop + newHeight > window.scrollY + window.innerHeight - 10)) {
+              popoverCardEl.style.top = `${Math.max(window.scrollY + 10, window.scrollY + rect.top - newHeight - 8)}px`;
+            }
           }
         }
       }
+    } else if (e.data.type === 'PLAMO_REQUEST_FOCUS') {
+      try {
+        if (popoverCardEl) {
+          popoverCardEl.focus();
+          if (popoverCardEl.contentWindow) {
+            popoverCardEl.contentWindow.focus();
+          }
+        }
+      } catch {}
     } else if (e.data.type === 'PLAMO_REPLACE_TEXT') {
       if (lastSelectionData && e.data.text) {
         handleTextReplacement(lastSelectionData, e.data.text);

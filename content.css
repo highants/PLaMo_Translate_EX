@@ -64,18 +64,23 @@
 .plamo-ext-popover-iframe {
   position: absolute;
   z-index: 2147483645;
-  width: 400px;
-  min-width: 320px;
+  width: 300px;
+  min-width: 240px;
   max-width: calc(100vw - 20px);
-  height: 180px;
+  height: 44px;
   border: none !important;
   background: transparent !important;
-  border-radius: 12px;
-  box-shadow: 0 12px 32px -4px rgba(15, 23, 42, 0.18), 0 4px 12px -2px rgba(15, 23, 42, 0.08);
+  border-radius: 22px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
   overflow: hidden;
   color-scheme: light dark;
-  animation: plamo-pop-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  transition: height 0.12s ease-out;
+  animation: plamo-pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1), height 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-radius 0.2s ease, box-shadow 0.22s ease;
+}
+
+.plamo-ext-popover-iframe.is-expanded {
+  border-radius: 12px;
+  box-shadow: 0 12px 32px -4px rgba(15, 23, 42, 0.18), 0 4px 12px -2px rgba(15, 23, 42, 0.08);
 }
 
 .plamo-ext-popover-card {
