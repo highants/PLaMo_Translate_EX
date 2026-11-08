@@ -100,7 +100,13 @@ function getCleanText(rawText) {
     return cleanTranslationOutput(rawText);
   }
   if (!rawText || typeof rawText !== 'string') return '';
-  return rawText
+  let cleaned = rawText;
+  const stopIndex = cleaned.search(/(?:<\/s>|<\|plamo:tag|<\|plamo:bos|<\|plamo:eos|<\|endoftext)/);
+  if (stopIndex !== -1) {
+    cleaned = cleaned.substring(0, stopIndex);
+  }
+  return cleaned
+    .replace(/<\/s>/g, '')
     .replace(/<\|plamo:[^>]+?>/g, '')
     .replace(/<\|endoftext\|>/g, '')
     .replace(/<\|[a-z_]+?\|>/g, '')
@@ -116,6 +122,7 @@ function getStopTokens() {
     return STOP_TOKENS;
   }
   return [
+    '</s>',
     '<|plamo:tag|>',
     '<|plamo:bos|>',
     '<|plamo:eos|>',
@@ -464,10 +471,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           nCtx: message.nCtx || 2048
         });
 
+        // Cap runaway generations for short text if stop tokens are somehow bypassed
+        const requestedMax = Number(message.maxTokens) || 1024;
+        const estimatedNeeded = Math.max(128, Math.ceil((message.prompt || '').length * 1.5));
+        const effectiveMaxTokens = Math.min(requestedMax, estimatedNeeded);
+
         const stop = getStopTokens();
         const res = await wllamaInstance.createCompletion({
           prompt: message.prompt,
-          max_tokens: Number(message.maxTokens) || 1024,
+          max_tokens: effectiveMaxTokens,
           temperature: Number(message.temperature) || 0,
           stop
         });

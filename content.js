@@ -18,6 +18,7 @@
   let isPageTranslationActive = false;
   let isPageTranslationPaused = false;
   let pageTranslationAbortController = null;
+  let currentPopoverRequestId = 0;
 
   // Initialize Settings
   chrome.storage.local.get(DEFAULT_SETTINGS, (stored) => {
@@ -134,6 +135,11 @@
       e.stopPropagation();
     });
 
+    floatingTriggerEl.addEventListener('mouseup', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
     floatingTriggerEl.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -180,6 +186,10 @@
       return `<option value="${lang.code}" ${selected}>${label}</option>`;
     }).join('');
 
+    const initialEngineLabel = (currentSettings.engineMode === 'wllama')
+      ? (uiLang === 'en' ? 'PLaMo 0.8B (In-browser)' : 'PLaMo 0.8B (ブラウザ内蔵)')
+      : 'LM Studio';
+
     popoverCardEl.innerHTML = `
       <div class="plamo-ext-card-header">
         <div class="plamo-ext-header-brand">
@@ -205,7 +215,7 @@
         </div>
       </div>
       <div class="plamo-ext-card-footer">
-        <span class="plamo-ext-card-status" style="font-size:11px; color:#64748b;">LM Studio</span>
+        <span class="plamo-ext-card-status" style="font-size:11px; color:#64748b;">${initialEngineLabel}</span>
         <div class="plamo-ext-footer-actions">
           ${selectionData.isEditable ? `<button class="plamo-ext-btn plamo-ext-card-replace">${t('btnReplace')}</button>` : ''}
           <button class="plamo-ext-btn plamo-ext-card-reload" title="${t('btnReload')}">${t('btnReload')}</button>
@@ -276,10 +286,14 @@
 
   async function triggerPopoverTranslate(text, targetLang, form) {
     if (!popoverCardEl) return;
+    const requestId = ++currentPopoverRequestId;
     const bodyEl = popoverCardEl.querySelector('.plamo-ext-card-body');
     const copyBtn = popoverCardEl.querySelector('.plamo-ext-card-copy');
     const replaceBtn = popoverCardEl.querySelector('.plamo-ext-card-replace');
     const statusEl = popoverCardEl.querySelector('.plamo-ext-card-status');
+    const uiLang = (typeof PlamoI18n !== 'undefined' && PlamoI18n.resolveUiLang)
+      ? PlamoI18n.resolveUiLang(currentSettings.uiLang)
+      : 'ja';
 
     bodyEl.innerHTML = `
       <div class="plamo-ext-loading">
@@ -293,10 +307,12 @@
         type: 'TRANSLATE_TEXT',
         text,
         targetLang,
-        form
+        form,
+        sourceLang: currentSettings.sourceLang || 'auto',
+        engineMode: currentSettings.engineMode
       });
 
-      if (!popoverCardEl) return;
+      if (requestId !== currentPopoverRequestId || !popoverCardEl) return;
 
       if (response && response.ok) {
         const translated = response.translatedText || t('outputPlaceholder');
@@ -348,22 +364,25 @@
           };
         }
       } else {
-        const errorMsg = response ? response.error : '翻訳サービスから応答がありません';
+        const errorMsg = response ? response.error : (uiLang === 'en' ? 'No response from translation service' : '翻訳サービスから応答がありません');
+        const hint = (currentSettings.engineMode === 'wllama')
+          ? (uiLang === 'en' ? 'Check if WebGPU/WASM is supported or reload the model in settings.' : 'WebGPU/WASMがサポートされているか、設定でモデル再読込を確認してください。')
+          : (uiLang === 'en' ? 'Ensure LM Studio server is running on port 1234.' : 'LM Studio (ポート 1234) でサーバーが実行されているか確認してください。');
         bodyEl.innerHTML = `
           <div class="plamo-ext-error-msg">
-            <strong>翻訳エラー:</strong><br>
+            <strong>${uiLang === 'en' ? 'Translation Error:' : '翻訳エラー:'}</strong><br>
             ${escapeHtml(errorMsg)}
             <div style="margin-top: 6px; font-size: 11px; opacity: 0.85;">
-              LM Studio (ポート 1234) でサーバーが実行されているか確認してください。
+              ${escapeHtml(hint)}
             </div>
           </div>
         `;
       }
     } catch (err) {
-      if (!popoverCardEl) return;
+      if (requestId !== currentPopoverRequestId || !popoverCardEl) return;
       bodyEl.innerHTML = `
         <div class="plamo-ext-error-msg">
-          <strong>通信エラー:</strong><br>
+          <strong>${uiLang === 'en' ? 'Communication Error:' : '通信エラー:'}</strong><br>
           ${escapeHtml(err.message || String(err))}
         </div>
       `;
@@ -672,6 +691,26 @@
   // -------------------------------------------------------------
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message || !message.type) return;
+
+    if (message.type === 'WLLAMA_PROGRESS') {
+      if (popoverCardEl) {
+        const loadingSpan = popoverCardEl.querySelector('.plamo-ext-loading span');
+        if (loadingSpan && message.state) {
+          const state = message.state;
+          const uiLang = (typeof PlamoI18n !== 'undefined' && PlamoI18n.resolveUiLang)
+            ? PlamoI18n.resolveUiLang(currentSettings.uiLang)
+            : 'ja';
+          if (state.status === 'downloading' || state.status === 'loading') {
+            const percent = state.percent || 0;
+            const label = state.status === 'downloading'
+              ? (uiLang === 'en' ? `Downloading model: ${percent}%...` : `モデルDL中: ${percent}%...`)
+              : (uiLang === 'en' ? `Initializing model: ${percent}%...` : `モデル読込中: ${percent}%...`);
+            loadingSpan.textContent = label;
+          }
+        }
+      }
+      return;
+    }
 
     if (message.type === 'SHOW_INLINE_TRANSLATION') {
       const selData = getActiveSelection() || {

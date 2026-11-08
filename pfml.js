@@ -11,6 +11,7 @@ const PFML_VAL = '<|plamo:val|>';
 
 // Stop tokens for model generation
 const STOP_TOKENS = [
+  '</s>',
   '<|plamo:tag|>',
   '<|plamo:bos|>',
   '<|plamo:eos|>',
@@ -308,7 +309,14 @@ function cleanTranslationOutput(rawText) {
   if (!rawText || typeof rawText !== 'string') return '';
   let cleaned = rawText;
 
-  // Remove any remaining PFML tokens
+  // Cut off everything after the first occurrence of any stop marker
+  const stopIndex = cleaned.search(/(?:<\/s>|<\|plamo:tag|<\|plamo:bos|<\|plamo:eos|<\|endoftext)/);
+  if (stopIndex !== -1) {
+    cleaned = cleaned.substring(0, stopIndex);
+  }
+
+  // Remove any remaining PFML tokens / special markers
+  cleaned = cleaned.replace(/<\/s>/g, '');
   cleaned = cleaned.replace(/<\|plamo:[^>]+?>/g, '');
   cleaned = cleaned.replace(/<\|endoftext\|>/g, '');
   cleaned = cleaned.replace(/<\|[a-z_]+?\|>/g, '');
