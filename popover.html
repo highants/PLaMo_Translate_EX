@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>PLaMo Translate</title>
+  <title>PLaMo 翻訳</title>
   <link rel="stylesheet" href="content.css">
   <style>
     html, body {
@@ -76,6 +76,9 @@
       margin-left: 6px;
       border-radius: 4px;
       transition: background 0.15s, color 0.15s;
+    }
+    body.is-window-mode .plamo-ext-btn-close-window {
+      display: none; /* OS title bar already provides the window close button */
     }
     .plamo-ext-btn-close-window:hover {
       background: #fee2e2;
