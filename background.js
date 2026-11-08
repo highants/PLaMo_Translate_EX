@@ -93,8 +93,8 @@ async function ensureOffscreenDocument() {
 
   creatingOffscreenPromise = chrome.offscreen.createDocument({
     url: OFFSCREEN_DOCUMENT_PATH,
-    reasons: ['WORKERS', 'BLOBS'],
-    justification: 'Run Wllama (llama.cpp WebAssembly/WebGPU) in-browser inference and OPFS model caching'
+    reasons: ['AUDIO_PLAYBACK', 'WORKERS', 'BLOBS'],
+    justification: 'Run Wllama (llama.cpp WebAssembly/WebGPU) in-browser inference with foreground process priority and OPFS model caching'
   });
 
   try {
@@ -117,7 +117,21 @@ async function sendToOffscreen(payload) {
   });
 }
 
-// 4. Message Router
+// 4. Keep-Alive Port Router (Prevents Service Worker / Offscreen throttling during inline translation)
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'plamo-inline-keepalive') return;
+  port.onMessage.addListener((msg) => {
+    if (msg && msg.type === 'ping') {
+      try {
+        port.postMessage({ type: 'pong', ts: Date.now() });
+      } catch {
+        // Port may have closed
+      }
+    }
+  });
+});
+
+// 5. Message Router
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || !message.type) return false;
 

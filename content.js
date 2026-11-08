@@ -302,6 +302,21 @@
       </div>
     `;
 
+    let keepAlivePort = null;
+    let keepAliveInterval = null;
+    try {
+      keepAlivePort = chrome.runtime.connect({ name: 'plamo-inline-keepalive' });
+      keepAliveInterval = setInterval(() => {
+        try {
+          if (keepAlivePort) keepAlivePort.postMessage({ type: 'ping' });
+        } catch {
+          // Ignore disconnected port
+        }
+      }, 60);
+    } catch {
+      // Ignore if connect fails
+    }
+
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'TRANSLATE_TEXT',
@@ -386,6 +401,15 @@
           ${escapeHtml(err.message || String(err))}
         </div>
       `;
+    } finally {
+      if (keepAliveInterval) clearInterval(keepAliveInterval);
+      if (keepAlivePort) {
+        try {
+          keepAlivePort.disconnect();
+        } catch {
+          // Ignore
+        }
+      }
     }
   }
 
