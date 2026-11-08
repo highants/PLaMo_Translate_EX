@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>PLaMo Inline Popover</title>
+  <link rel="stylesheet" href="content.css">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent !important;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Meiryo", sans-serif;
+    }
+    .plamo-ext-popover-card {
+      position: static !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      box-shadow: none !important;
+      animation: none !important;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+    }
+    @media (prefers-color-scheme: dark) {
+      .plamo-ext-popover-card {
+        border-color: #334155;
+      }
+    }
+    .plamo-ext-card-body {
+      max-height: 280px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="plamo-ext-popover-card" id="popoverCard">
+    <div class="plamo-ext-card-header">
+      <div class="plamo-ext-header-brand">
+        <span class="plamo-ext-brand-icon">🌐</span>
+        <span class="plamo-ext-brand-name">PLaMo</span>
+      </div>
+      <div class="plamo-ext-header-controls">
+        <select class="plamo-ext-select plamo-ext-card-target-lang" id="targetLangSelect" title="翻訳先の言語"></select>
+        <select class="plamo-ext-select plamo-ext-card-form" id="formSelect" title="文体 (日本語のみ)" style="display:none;"></select>
+      </div>
+    </div>
+    <div class="plamo-ext-card-body" id="cardBody">
+      <div class="plamo-ext-loading">
+        <div class="plamo-ext-spinner"></div>
+        <span id="loadingSpan">翻訳中...</span>
+      </div>
+    </div>
+    <div class="plamo-ext-card-footer">
+      <span class="plamo-ext-card-status" id="cardStatus" style="font-size:11px; color:#64748b;">PLaMo</span>
+      <div class="plamo-ext-footer-actions">
+        <button class="plamo-ext-btn plamo-ext-card-replace" id="btnReplace" style="display:none;">置換</button>
+        <button class="plamo-ext-btn plamo-ext-card-reload" id="btnReload" title="再翻訳">再翻訳</button>
+        <button class="plamo-ext-btn plamo-ext-btn-primary plamo-ext-card-copy" id="btnCopy">コピー</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="i18n.js"></script>
+  <script src="pfml.js"></script>
+  <script src="popover.js"></script>
+</body>
+</html>

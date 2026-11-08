@@ -18,7 +18,6 @@
   let isPageTranslationActive = false;
   let isPageTranslationPaused = false;
   let pageTranslationAbortController = null;
-  let currentPopoverRequestId = 0;
 
   // Initialize Settings
   chrome.storage.local.get(DEFAULT_SETTINGS, (stored) => {
@@ -158,78 +157,34 @@
   }
 
   // -------------------------------------------------------------
-  // Floating Translation Popover Card
+  // Floating Translation Popover Card (Out-of-Process iframe)
+  // Rendering popover.html via an extension-origin iframe grants
+  // the entire extension process true Visible View / Foreground Priority!
   // -------------------------------------------------------------
-  function openPopoverCard(selectionData, overrideOptions = {}) {
+  function openPopoverCard(selectionData) {
     removeFloatingTrigger();
     removePopoverCard();
 
     lastSelectionData = selectionData;
     const text = selectionData.text;
-    const rect = selectionData.rect;
+    const rect = selectionData.rect || { top: 120, bottom: 160, left: window.innerWidth / 2 - 200, width: 400, height: 40 };
 
-    popoverCardEl = document.createElement('div');
-    popoverCardEl.className = 'plamo-ext-popover-card';
+    popoverCardEl = document.createElement('iframe');
+    popoverCardEl.className = 'plamo-ext-popover-iframe';
+    popoverCardEl.setAttribute('allow', 'clipboard-write');
 
-    // Build Languages options
-    const targetLang = overrideOptions.targetLang || currentSettings.targetLang || 'ja';
-    const form = overrideOptions.form || currentSettings.form || 'none';
-    const uiLang = (typeof PlamoI18n !== 'undefined' && PlamoI18n.resolveUiLang)
-      ? PlamoI18n.resolveUiLang(currentSettings.uiLang)
-      : 'ja';
-
-    const langOptionsHtml = PLAMO_LANGUAGES.map(lang => {
-      const selected = lang.code === targetLang ? 'selected' : '';
-      const label = (typeof getLanguageDisplayName === 'function')
-        ? getLanguageDisplayName(lang.code, uiLang)
-        : `${lang.name} (${lang.code})`;
-      return `<option value="${lang.code}" ${selected}>${label}</option>`;
-    }).join('');
-
-    const initialEngineLabel = (currentSettings.engineMode === 'wllama')
-      ? (uiLang === 'en' ? 'PLaMo 0.8B (In-browser)' : 'PLaMo 0.8B (ブラウザ内蔵)')
-      : 'LM Studio';
-
-    popoverCardEl.innerHTML = `
-      <div class="plamo-ext-card-header">
-        <div class="plamo-ext-header-brand">
-          <span class="plamo-ext-brand-icon">🌐</span>
-          <span class="plamo-ext-brand-name">PLaMo</span>
-        </div>
-        <div class="plamo-ext-header-controls">
-          <select class="plamo-ext-select plamo-ext-card-target-lang" title="${t('cardTargetLangTitle')}">
-            ${langOptionsHtml}
-          </select>
-          <select class="plamo-ext-select plamo-ext-card-form" title="${t('formTitleTooltip')}" style="${targetLang === 'ja' ? '' : 'display:none;'}">
-            <option value="none" ${form === 'none' ? 'selected' : ''}>${t('formNoneShort')}</option>
-            <option value="polite" ${form === 'polite' ? 'selected' : ''}>${t('formPoliteShort')}</option>
-            <option value="plain" ${form === 'plain' ? 'selected' : ''}>${t('formPlainShort')}</option>
-            <option value="easy" ${form === 'easy' ? 'selected' : ''}>${t('formEasyShort')}</option>
-          </select>
-        </div>
-      </div>
-      <div class="plamo-ext-card-body">
-        <div class="plamo-ext-loading">
-          <div class="plamo-ext-spinner"></div>
-          <span>${t('cardTranslating')}</span>
-        </div>
-      </div>
-      <div class="plamo-ext-card-footer">
-        <span class="plamo-ext-card-status" style="font-size:11px; color:#64748b;">${initialEngineLabel}</span>
-        <div class="plamo-ext-footer-actions">
-          ${selectionData.isEditable ? `<button class="plamo-ext-btn plamo-ext-card-replace">${t('btnReplace')}</button>` : ''}
-          <button class="plamo-ext-btn plamo-ext-card-reload" title="${t('btnReload')}">${t('btnReload')}</button>
-          <button class="plamo-ext-btn plamo-ext-btn-primary plamo-ext-card-copy">${t('btnCopy')}</button>
-        </div>
-      </div>
-    `;
+    const payload = {
+      text,
+      isEditable: Boolean(selectionData.isEditable)
+    };
+    popoverCardEl.src = chrome.runtime.getURL('popover.html') + '#' + encodeURIComponent(JSON.stringify(payload));
 
     // Position Card near selection
     let cardTop = window.scrollY + rect.bottom + 8;
     let cardLeft = window.scrollX + rect.left;
 
     // Check bottom overflow
-    const estimatedHeight = 220;
+    const estimatedHeight = 180;
     if (rect.bottom + estimatedHeight > window.innerHeight && rect.top > estimatedHeight) {
       cardTop = window.scrollY + rect.top - estimatedHeight - 8;
     }
@@ -249,32 +204,8 @@
 
     // Prevent selection events inside card from bubbling
     popoverCardEl.addEventListener('mousedown', (e) => e.stopPropagation());
-    popoverCardEl.addEventListener('mouseup', (e) => e.stopPropagation());
-
-    // Wire events
-    const targetSelect = popoverCardEl.querySelector('.plamo-ext-card-target-lang');
-    const formSelect = popoverCardEl.querySelector('.plamo-ext-card-form');
-    const reloadBtn = popoverCardEl.querySelector('.plamo-ext-card-reload');
-    const copyBtn = popoverCardEl.querySelector('.plamo-ext-card-copy');
-    const replaceBtn = popoverCardEl.querySelector('.plamo-ext-card-replace');
-
-    targetSelect.addEventListener('change', () => {
-      formSelect.style.display = targetSelect.value === 'ja' ? '' : 'none';
-      triggerPopoverTranslate(text, targetSelect.value, formSelect.value);
-    });
-
-    formSelect.addEventListener('change', () => {
-      triggerPopoverTranslate(text, targetSelect.value, formSelect.value);
-    });
-
-    reloadBtn.addEventListener('click', () => {
-      triggerPopoverTranslate(text, targetSelect.value, formSelect.value);
-    });
 
     document.body.appendChild(popoverCardEl);
-
-    // Initial Translation Trigger
-    triggerPopoverTranslate(text, targetLang, form);
   }
 
   function removePopoverCard() {
@@ -284,134 +215,32 @@
     }
   }
 
-  async function triggerPopoverTranslate(text, targetLang, form) {
-    if (!popoverCardEl) return;
-    const requestId = ++currentPopoverRequestId;
-    const bodyEl = popoverCardEl.querySelector('.plamo-ext-card-body');
-    const copyBtn = popoverCardEl.querySelector('.plamo-ext-card-copy');
-    const replaceBtn = popoverCardEl.querySelector('.plamo-ext-card-replace');
-    const statusEl = popoverCardEl.querySelector('.plamo-ext-card-status');
-    const uiLang = (typeof PlamoI18n !== 'undefined' && PlamoI18n.resolveUiLang)
-      ? PlamoI18n.resolveUiLang(currentSettings.uiLang)
-      : 'ja';
+  // Listen for messages from popover.html iframe
+  window.addEventListener('message', (e) => {
+    if (!e.data || typeof e.data !== 'object') return;
+    if (e.data.type === 'PLAMO_RESIZE') {
+      if (popoverCardEl && typeof e.data.height === 'number') {
+        const newHeight = e.data.height;
+        popoverCardEl.style.height = `${newHeight}px`;
 
-    bodyEl.innerHTML = `
-      <div class="plamo-ext-loading">
-        <div class="plamo-ext-spinner"></div>
-        <span>${t('cardTranslating')}</span>
-      </div>
-    `;
-
-    let keepAlivePort = null;
-    let keepAliveInterval = null;
-    try {
-      keepAlivePort = chrome.runtime.connect({ name: 'plamo-inline-keepalive' });
-      keepAliveInterval = setInterval(() => {
-        try {
-          if (keepAlivePort) keepAlivePort.postMessage({ type: 'ping' });
-        } catch {
-          // Ignore disconnected port
-        }
-      }, 60);
-    } catch {
-      // Ignore if connect fails
-    }
-
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'TRANSLATE_TEXT',
-        text,
-        targetLang,
-        form,
-        sourceLang: currentSettings.sourceLang || 'auto',
-        engineMode: currentSettings.engineMode
-      });
-
-      if (requestId !== currentPopoverRequestId || !popoverCardEl) return;
-
-      if (response && response.ok) {
-        const translated = response.translatedText || t('outputPlaceholder');
-        const autoSwitched = response.effectiveTargetLang && response.effectiveTargetLang !== targetLang;
-
-        let autoNoticeHtml = '';
-        if (autoSwitched) {
-          autoNoticeHtml = `<div class="plamo-ext-auto-badge">${t('autoSwitchedBadge')}</div>`;
-        }
-
-        bodyEl.innerHTML = `
-          ${autoNoticeHtml}
-          <div class="plamo-ext-result-content" style="white-space: pre-wrap;">${escapeHtml(translated)}</div>
-          <details class="plamo-ext-source-details">
-            <summary>${t('showSource', { n: text.length })}</summary>
-            <div class="plamo-ext-source-text">${escapeHtml(text)}</div>
-          </details>
-        `;
-
-        if (statusEl) {
-          const rawStatus = response.modelUsed || 'PLaMo';
-          statusEl.textContent = rawStatus;
-          statusEl.title = `${rawStatus} (${response.apiModeUsed || 'completions'})`;
-        }
-
-        // Copy button action
-        copyBtn.onclick = async () => {
-          try {
-            await navigator.clipboard.writeText(translated);
-            const origText = copyBtn.innerHTML;
-            copyBtn.innerHTML = t('btnCopySuccess');
-            copyBtn.classList.add('plamo-ext-btn-success');
-            setTimeout(() => {
-              if (copyBtn) {
-                copyBtn.innerHTML = origText;
-                copyBtn.classList.remove('plamo-ext-btn-success');
-              }
-            }, 2000);
-          } catch (err) {
-            console.warn('Failed to copy to clipboard:', err);
+        // Adjust top position if height expansion overflows the bottom of viewport
+        if (lastSelectionData && lastSelectionData.rect) {
+          const rect = lastSelectionData.rect;
+          const currentTop = parseFloat(popoverCardEl.style.top) || 0;
+          if (rect.top > newHeight && (currentTop + newHeight > window.scrollY + window.innerHeight - 10)) {
+            popoverCardEl.style.top = `${Math.max(window.scrollY + 10, window.scrollY + rect.top - newHeight - 8)}px`;
           }
-        };
-
-        // Replace button action (if inside editable field)
-        if (replaceBtn && lastSelectionData) {
-          replaceBtn.onclick = () => {
-            handleTextReplacement(lastSelectionData, translated);
-            removePopoverCard();
-          };
-        }
-      } else {
-        const errorMsg = response ? response.error : (uiLang === 'en' ? 'No response from translation service' : '翻訳サービスから応答がありません');
-        const hint = (currentSettings.engineMode === 'wllama')
-          ? (uiLang === 'en' ? 'Check if WebGPU/WASM is supported or reload the model in settings.' : 'WebGPU/WASMがサポートされているか、設定でモデル再読込を確認してください。')
-          : (uiLang === 'en' ? 'Ensure LM Studio server is running on port 1234.' : 'LM Studio (ポート 1234) でサーバーが実行されているか確認してください。');
-        bodyEl.innerHTML = `
-          <div class="plamo-ext-error-msg">
-            <strong>${uiLang === 'en' ? 'Translation Error:' : '翻訳エラー:'}</strong><br>
-            ${escapeHtml(errorMsg)}
-            <div style="margin-top: 6px; font-size: 11px; opacity: 0.85;">
-              ${escapeHtml(hint)}
-            </div>
-          </div>
-        `;
-      }
-    } catch (err) {
-      if (requestId !== currentPopoverRequestId || !popoverCardEl) return;
-      bodyEl.innerHTML = `
-        <div class="plamo-ext-error-msg">
-          <strong>${uiLang === 'en' ? 'Communication Error:' : '通信エラー:'}</strong><br>
-          ${escapeHtml(err.message || String(err))}
-        </div>
-      `;
-    } finally {
-      if (keepAliveInterval) clearInterval(keepAliveInterval);
-      if (keepAlivePort) {
-        try {
-          keepAlivePort.disconnect();
-        } catch {
-          // Ignore
         }
       }
+    } else if (e.data.type === 'PLAMO_REPLACE_TEXT') {
+      if (lastSelectionData && e.data.text) {
+        handleTextReplacement(lastSelectionData, e.data.text);
+        removePopoverCard();
+      }
+    } else if (e.data.type === 'PLAMO_CLOSE') {
+      removePopoverCard();
     }
-  }
+  });
 
   function handleTextReplacement(selectionData, newText) {
     if (!selectionData) return;
@@ -445,8 +274,8 @@
   // Mouse & Selection Event Listeners
   // -------------------------------------------------------------
   document.addEventListener('mouseup', (e) => {
-    // If clicking inside our popup card or trigger, don't re-trigger
-    if (e.target.closest('.plamo-ext-popover-card') || e.target.closest('.plamo-ext-floating-trigger')) {
+    // If clicking inside our popup iframe, card or trigger, don't re-trigger
+    if (e.target.closest('.plamo-ext-popover-iframe') || e.target.closest('.plamo-ext-popover-card') || e.target.closest('.plamo-ext-floating-trigger')) {
       return;
     }
 
@@ -715,26 +544,6 @@
   // -------------------------------------------------------------
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message || !message.type) return;
-
-    if (message.type === 'WLLAMA_PROGRESS') {
-      if (popoverCardEl) {
-        const loadingSpan = popoverCardEl.querySelector('.plamo-ext-loading span');
-        if (loadingSpan && message.state) {
-          const state = message.state;
-          const uiLang = (typeof PlamoI18n !== 'undefined' && PlamoI18n.resolveUiLang)
-            ? PlamoI18n.resolveUiLang(currentSettings.uiLang)
-            : 'ja';
-          if (state.status === 'downloading' || state.status === 'loading') {
-            const percent = state.percent || 0;
-            const label = state.status === 'downloading'
-              ? (uiLang === 'en' ? `Downloading model: ${percent}%...` : `モデルDL中: ${percent}%...`)
-              : (uiLang === 'en' ? `Initializing model: ${percent}%...` : `モデル読込中: ${percent}%...`);
-            loadingSpan.textContent = label;
-          }
-        }
-      }
-      return;
-    }
 
     if (message.type === 'SHOW_INLINE_TRANSLATION') {
       const selData = getActiveSelection() || {
