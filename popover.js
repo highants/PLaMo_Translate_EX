@@ -19,6 +19,8 @@
   let currentSettings = { ...DEFAULT_SETTINGS };
   let currentText = '';
   let isEditable = false;
+  let isWindowMode = false;
+  let targetTabId = null;
   let translatedText = '';
   let activeRequestId = 0;
 
@@ -29,9 +31,15 @@
       const payload = JSON.parse(decodeURIComponent(rawHash));
       currentText = payload.text || '';
       isEditable = Boolean(payload.isEditable);
+      isWindowMode = Boolean(payload.isWindowMode);
+      targetTabId = payload.tabId || null;
     }
   } catch (err) {
     console.warn('[PLaMo Popover] Failed to parse hash payload:', err);
+  }
+
+  if (isWindowMode) {
+    document.body.classList.add('is-window-mode');
   }
 
   // 2. i18n Translation Helper
@@ -53,8 +61,9 @@
       .replace(/'/g, '&#039;');
   }
 
-  // 3. Post height changes to parent content script
+  // 3. Post height changes to parent content script (iframe mode only)
   function notifyHeight() {
+    if (isWindowMode) return;
     if (!cardEl) return;
     const height = Math.min(420, Math.max(140, cardEl.offsetHeight));
     window.parent.postMessage({ type: 'PLAMO_RESIZE', height }, '*');
@@ -235,9 +244,42 @@
     }
   });
 
-  btnReplace.addEventListener('click', () => {
+  btnReplace.addEventListener('click', async () => {
     if (!translatedText) return;
-    window.parent.postMessage({ type: 'PLAMO_REPLACE_TEXT', text: translatedText }, '*');
+    if (isWindowMode && targetTabId) {
+      try {
+        await chrome.tabs.sendMessage(targetTabId, {
+          type: 'PLAMO_REPLACE_TEXT',
+          text: translatedText
+        });
+      } catch (err) {
+        console.warn('[PLaMo Popover] Failed to send replace text to tab:', err);
+      }
+      window.close();
+    } else {
+      window.parent.postMessage({ type: 'PLAMO_REPLACE_TEXT', text: translatedText }, '*');
+    }
+  });
+
+  const btnCloseWindow = document.getElementById('btnCloseWindow');
+  if (btnCloseWindow) {
+    btnCloseWindow.addEventListener('click', () => {
+      if (isWindowMode) {
+        window.close();
+      } else {
+        window.parent.postMessage({ type: 'PLAMO_CLOSE' }, '*');
+      }
+    });
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (isWindowMode) {
+        window.close();
+      } else {
+        window.parent.postMessage({ type: 'PLAMO_CLOSE' }, '*');
+      }
+    }
   });
 
   // 8. Start

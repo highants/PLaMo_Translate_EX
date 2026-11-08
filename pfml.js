@@ -132,7 +132,8 @@ const DEFAULT_SETTINGS = {
   glossaryText: '',
   temperature: 0,
   maxTokens: 1024,
-  selectionMode: 'button' // 'button' | 'instant' | 'off'
+  selectionMode: 'button', // 'button' | 'instant' | 'off'
+  inlineDisplayMode: 'window' // 'window' (Native Float Window, Fastest & Immune to EcoQoS) | 'iframe' (In-page OOPIF)
 };
 
 /**

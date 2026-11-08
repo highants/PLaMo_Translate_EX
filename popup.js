@@ -64,6 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const wllamaProgressBar = document.getElementById('wllamaProgressBar');
   const wllamaStatusText = document.getElementById('wllamaStatusText');
   const settingSelectionMode = document.getElementById('settingSelectionMode');
+  const settingInlineDisplayMode = document.getElementById('settingInlineDisplayMode');
   const settingAutoSwitchJaEn = document.getElementById('settingAutoSwitchJaEn');
   const settingTemperature = document.getElementById('settingTemperature');
   const settingMaxTokens = document.getElementById('settingMaxTokens');
@@ -221,6 +222,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     populateWllamaPresets();
     settingSelectionMode.value = currentSettings.selectionMode || 'button';
+    if (settingInlineDisplayMode) {
+      settingInlineDisplayMode.value = currentSettings.inlineDisplayMode || 'window';
+    }
     settingAutoSwitchJaEn.checked = !!currentSettings.autoSwitchJaEn;
     settingTemperature.value = currentSettings.temperature !== undefined ? currentSettings.temperature : 0;
     settingMaxTokens.value = currentSettings.maxTokens || 1024;
@@ -697,6 +701,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       wllamaModelUrl: chosenWllamaUrl,
       wllamaUseWebGpu: chosenWllamaWebGpu,
       selectionMode: settingSelectionMode.value,
+      inlineDisplayMode: settingInlineDisplayMode ? settingInlineDisplayMode.value : 'window',
       autoSwitchJaEn: settingAutoSwitchJaEn.checked,
       temperature: parseFloat(settingTemperature.value) || 0,
       maxTokens: parseInt(settingMaxTokens.value, 10) || 1024,

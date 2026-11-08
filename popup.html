@@ -260,6 +260,16 @@
           </select>
         </div>
 
+        <!-- In-Page Translation Display Style (Window vs Iframe) -->
+        <div class="setting-item">
+          <label for="settingInlineDisplayMode" data-i18n="labelInlineDisplayMode">インライン翻訳の表示形式</label>
+          <select id="settingInlineDisplayMode" class="select-input">
+            <option value="window" data-i18n="optInlineModeWindow">フロート小窓 (P-core最速 / 推奨)</option>
+            <option value="iframe" data-i18n="optInlineModeIframe">ページ内カード (iframe)</option>
+          </select>
+          <span class="setting-desc" data-i18n="descInlineDisplayMode">デスクトップ小窓にすることでWindowsの効率モード(EcoQoS)を回避し、メイン窓と同じ最高速で推論します</span>
+        </div>
+
         <!-- Auto Ja/En switch -->
         <div class="setting-item">
           <label class="checkbox-label">

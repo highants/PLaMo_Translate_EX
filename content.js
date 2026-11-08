@@ -157,15 +157,45 @@
   }
 
   // -------------------------------------------------------------
-  // Floating Translation Popover Card (Out-of-Process iframe)
-  // Rendering popover.html via an extension-origin iframe grants
-  // the entire extension process true Visible View / Foreground Priority!
+  // Floating Translation Popover Card
+  // Supports Approach A (Native Float Window via chrome.windows.create - Fastest)
+  // and Approach B (In-page OOPIF iframe)
   // -------------------------------------------------------------
   function openPopoverCard(selectionData) {
     removeFloatingTrigger();
     removePopoverCard();
-
     lastSelectionData = selectionData;
+
+    const displayMode = currentSettings.inlineDisplayMode || 'window';
+    if (displayMode === 'iframe') {
+      openIframePopover(selectionData);
+    } else {
+      openFloatWindow(selectionData);
+    }
+  }
+
+  function openFloatWindow(selectionData) {
+    const text = selectionData.text;
+    const rect = selectionData.rect || { top: 120, bottom: 160, left: 200, width: 400, height: 40 };
+
+    // Calculate approximate screen coordinates based on browser window and selection
+    const titleBarOffset = Math.max(0, (window.outerHeight - window.innerHeight));
+    const screenX = Math.round(window.screenX + (rect.left || 100));
+    const screenY = Math.round(window.screenY + titleBarOffset + (rect.bottom || 100) + 8);
+
+    chrome.runtime.sendMessage({
+      type: 'OPEN_FLOAT_WINDOW',
+      text,
+      isEditable: Boolean(selectionData.isEditable),
+      screenX,
+      screenY
+    }).catch(err => {
+      console.warn('[PLaMo Content] Failed to open float window, falling back to iframe:', err);
+      openIframePopover(selectionData);
+    });
+  }
+
+  function openIframePopover(selectionData) {
     const text = selectionData.text;
     const rect = selectionData.rect || { top: 120, bottom: 160, left: window.innerWidth / 2 - 200, width: 400, height: 40 };
 
@@ -175,7 +205,8 @@
 
     const payload = {
       text,
-      isEditable: Boolean(selectionData.isEditable)
+      isEditable: Boolean(selectionData.isEditable),
+      isWindowMode: false
     };
     popoverCardEl.src = chrome.runtime.getURL('popover.html') + '#' + encodeURIComponent(JSON.stringify(payload));
 
@@ -552,6 +583,11 @@
         isEditable: false
       };
       openPopoverCard(selData);
+      sendResponse({ ok: true });
+    } else if (message.type === 'PLAMO_REPLACE_TEXT') {
+      if (lastSelectionData && message.text) {
+        handleTextReplacement(lastSelectionData, message.text);
+      }
       sendResponse({ ok: true });
     } else if (message.type === 'TOGGLE_PAGE_TRANSLATION') {
       togglePageTranslation();

@@ -106,6 +106,11 @@
       optSelectionModeInstant: '選択時に即座に翻訳カードを開く',
       optSelectionModeOff: '無効 (右クリックメニューまたはポップアップから翻訳)',
 
+      labelInlineDisplayMode: 'インライン翻訳の表示形式',
+      optInlineModeWindow: 'フロート小窓 (P-core最速 / 推奨)',
+      optInlineModeIframe: 'ページ内カード (iframe)',
+      descInlineDisplayMode: 'デスクトップ小窓にすることでWindowsの効率モード(EcoQoS)を回避し、メイン窓と同じ最高速で推論します',
+
       labelAutoSwitchJaEn: '日本語を入力した時は自動的に英語へ翻訳する',
       descAutoSwitchJaEn: '翻訳先が「日本語」の状態で日本語を入力した場合、自動で英語に反転します',
 
@@ -240,6 +245,11 @@
       optSelectionModeButton: 'Show floating icon button (Click to translate)',
       optSelectionModeInstant: 'Open translation card immediately on selection',
       optSelectionModeOff: 'Disabled (Use right-click menu or popup)',
+
+      labelInlineDisplayMode: 'Inline Translation Display Style',
+      optInlineModeWindow: 'Floating Window (P-core Fastest / Recommended)',
+      optInlineModeIframe: 'In-Page Card (iframe)',
+      descInlineDisplayMode: 'Uses a desktop popup window to bypass Windows Efficiency Mode (EcoQoS) for maximum inference speed',
 
       labelAutoSwitchJaEn: 'Auto-switch target to English when Japanese text is input',
       descAutoSwitchJaEn: 'If target is Japanese and input text is Japanese, target automatically flips to English',

@@ -117,6 +117,15 @@ async function sendToOffscreen(payload) {
   });
 }
 
+// Active Native Float Window tracker
+let activeFloatWindowId = null;
+
+chrome.windows.onRemoved.addListener((windowId) => {
+  if (windowId === activeFloatWindowId) {
+    activeFloatWindowId = null;
+  }
+});
+
 // 4. Message Router
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || !message.type) return false;
@@ -130,6 +139,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
       switch (message.type) {
+        case 'OPEN_FLOAT_WINDOW': {
+          const text = message.text || '';
+          const isEditable = Boolean(message.isEditable);
+          const tabId = sender.tab ? sender.tab.id : null;
+
+          const width = 430;
+          const height = 310;
+          const reqX = typeof message.screenX === 'number' ? message.screenX : 200;
+          const reqY = typeof message.screenY === 'number' ? message.screenY : 200;
+
+          // Close existing float window if open
+          if (activeFloatWindowId !== null) {
+            try {
+              await chrome.windows.remove(activeFloatWindowId);
+            } catch {
+              // Ignore if already closed
+            }
+            activeFloatWindowId = null;
+          }
+
+          const payload = {
+            text,
+            isEditable,
+            tabId,
+            isWindowMode: true
+          };
+
+          const win = await chrome.windows.create({
+            url: chrome.runtime.getURL('popover.html') + '#' + encodeURIComponent(JSON.stringify(payload)),
+            type: 'popup',
+            width,
+            height,
+            left: Math.max(10, reqX),
+            top: Math.max(10, reqY),
+            focused: true
+          });
+
+          activeFloatWindowId = win.id;
+          sendResponse({ ok: true, windowId: win.id });
+          break;
+        }
         case 'TEST_CONNECTION':
         case 'FETCH_MODELS': {
           const stored = await chrome.storage.local.get(DEFAULT_SETTINGS);
