@@ -202,6 +202,7 @@
     popoverCardEl = document.createElement('iframe');
     popoverCardEl.className = 'plamo-ext-popover-iframe';
     popoverCardEl.setAttribute('allow', 'clipboard-write');
+    popoverCardEl.tabIndex = 0;
 
     const payload = {
       text,
@@ -236,7 +237,17 @@
     // Prevent selection events inside card from bubbling
     popoverCardEl.addEventListener('mousedown', (e) => e.stopPropagation());
 
+    // Auto-focus the iframe on load to promote extension process to foreground in Chromium (Approach C)
+    popoverCardEl.addEventListener('load', () => {
+      try {
+        popoverCardEl.focus();
+      } catch {}
+    });
+
     document.body.appendChild(popoverCardEl);
+    try {
+      popoverCardEl.focus();
+    } catch {}
   }
 
   function removePopoverCard() {

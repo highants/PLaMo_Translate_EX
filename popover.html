@@ -63,7 +63,9 @@
       flex: 0 0 auto;
     }
     .plamo-ext-btn-close-window {
-      display: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       background: transparent;
       border: none;
       color: #64748b;
@@ -74,11 +76,6 @@
       margin-left: 6px;
       border-radius: 4px;
       transition: background 0.15s, color 0.15s;
-    }
-    body.is-window-mode .plamo-ext-btn-close-window {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
     }
     .plamo-ext-btn-close-window:hover {
       background: #fee2e2;
@@ -93,7 +90,7 @@
   </style>
 </head>
 <body>
-  <div class="plamo-ext-popover-card" id="popoverCard">
+  <div class="plamo-ext-popover-card" id="popoverCard" tabindex="-1">
     <div class="plamo-ext-card-header">
       <div class="plamo-ext-header-brand">
         <span class="plamo-ext-brand-icon">🌐</span>

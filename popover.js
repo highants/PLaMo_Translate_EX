@@ -133,6 +133,10 @@
     notifyHeight();
 
     try {
+      window.focus();
+    } catch {}
+
+    try {
       const response = await chrome.runtime.sendMessage({
         type: 'TRANSLATE_TEXT',
         text: currentText,
@@ -289,6 +293,15 @@
     }
     initControls();
     notifyHeight();
+
+    // Focus window and card container to trigger foreground priority in Chromium (Approach C)
+    try {
+      window.focus();
+      if (cardEl && typeof cardEl.focus === 'function') {
+        cardEl.focus();
+      }
+    } catch {}
+
     if (currentText) {
       performTranslate();
     }
