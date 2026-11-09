@@ -107,7 +107,7 @@ Easily selectable directly from the Settings panel:
 8. **Context & Glossary Support**:
    * Supply background domain context or enforce custom term mapping pairs (e.g., `LLM=Large Language Model`).
 9. **Smart Auto Ja↔En Language Swap**:
-   * Automatically flips the target language to English when Japanese text is entered while target is set to Japanese (preserved as Easy Japanese rewrite when `ja-easy` is selected).
+   * Automatically flips the target language to English when Japanese text is entered while target is set to Japanese (preserved as Japanese rewrite/refinement when specific styles like Polite, Plain, or Easy Japanese are selected).
 10. **Serialized Offscreen Queue**:
     * In Mode B, multiple paragraph translation requests are dispatched through a mutex queue to ensure KV cache stability and prevent memory race conditions.
 

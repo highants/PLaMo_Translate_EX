@@ -343,7 +343,14 @@ function resolveTargetLang(text, sourceLang, targetLang, autoSwitchJaEn = true, 
     return 'ja-easy';
   }
 
-  // Auto-switch JA -> EN only if target is standard Japanese ('ja')
+  // If the user specified any Japanese style/form (polite, plain, etc.),
+  // they explicitly request Japanese stylistic rewriting (e.g. Desu/Masu or Da/Dearu).
+  // Do NOT auto-switch to English even if input text is detected as Japanese.
+  if (normTarget === 'ja' && form && form !== 'none') {
+    return 'ja';
+  }
+
+  // Auto-switch JA -> EN only if target is standard Japanese ('ja') and no style is selected
   if (autoSwitchJaEn && (sourceLang === 'auto' || !sourceLang) && normTarget === 'ja') {
     if (isJapaneseText(text)) {
       return 'en';
