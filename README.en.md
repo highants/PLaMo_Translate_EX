@@ -254,6 +254,7 @@ Access **⚙️ Settings** to configure:
 
 ## Links & Credits
 
+* **Built with PLaMo**
 * **Preferred Networks Tech Blog**:  
   [PLaMo 3 Translate Release & Engineering Insights](https://www.preferred.jp/ja/blog/tech/plamo-3-translate-weight-release)
 * **Hugging Face Model Repositories**:  
@@ -262,5 +263,8 @@ Access **⚙️ Settings** to configure:
 * **@wllama/wllama Engine**:  
   [https://github.com/ngxson/wllama](https://github.com/ngxson/wllama)
 * **License**:
-  * Extension Code: MIT License
-  * PLaMo Translation Models: PLaMo Community License (free for research, personal, and commercial use for entities under 1B JPY annual revenue upon registration).
+  * Extension Code: [MIT License](LICENSE)
+  * PLaMo Translation Models: [PLaMo Community License](https://plamo.preferredai.jp/info/plamo-community-license-ja)
+    * Free for personal, research, and non-commercial purposes without registration.
+    * Entities with annual revenue under 1 billion JPY may use it for commercial purposes free of charge upon prior [registration](https://plamo.preferredai.jp/info/plamo-community-license-ja).
+    * **Output Attribution Exemption (Article 5)**: Since PLaMo 3 Translate is classified as a "Transformation Model", users are **not required to attribute PLaMo on translation outputs**, allowing translated documents to be freely distributed in professional and business contexts.

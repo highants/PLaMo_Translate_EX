@@ -253,6 +253,7 @@ PLaMo 3 Translate が公式対応している 53 言語および「やさしい�
 
 ## 関連リンク・クレジット
 
+- **Built with PLaMo**
 - **Preferred Networks 公式テックブログ**:  
   [PLaMo 3 Translate：世界最高クラスの翻訳特化LLMの重み公開と開発秘話](https://www.preferred.jp/ja/blog/tech/plamo-3-translate-weight-release)
 - **Hugging Face モデルリポジトリ**:  
@@ -261,5 +262,8 @@ PLaMo 3 Translate が公式対応している 53 言語および「やさしい�
 - **@wllama/wllama (WASM/WebGPU 推論エンジン)**:  
   [https://github.com/ngxson/wllama](https://github.com/ngxson/wllama)
 - **ライセンス**:
-  - 本拡張機能コード: MIT License
-  - 翻訳モデル: PLaMoコミュニティライセンス（研究・学習・趣味利用は無償。売上10億円以下の企業・個人も事前登録により無償で商用利用可能）
+  - 本拡張機能コード: [MIT License](LICENSE)
+  - 翻訳モデル: [PLaMoコミュニティライセンス](https://plamo.preferredai.jp/info/plamo-community-license-ja)
+    - 研究・学習・個人的な趣味利用は無償・事前登録不要です。
+    - 直近事業年度の売上高・収入が10億円以下の企業・個人は、PFN指定の[事前登録](https://plamo.preferredai.jp/info/plamo-community-license-ja)を行うことで無償で商用利用（社内利用・業務利用）が可能です（10億円超の場合は別途商用契約が必要）。
+    - **生成物の利用特例（第5条）**: PLaMo 3 Translate は「変換モデル」に該当するため、本拡張機能によって出力された翻訳結果（生成物）を公表・社外利用する際、PLaMo のクレジット表記を行う義務はありません（業務文書や公開資料等にそのまま活用可能）。
