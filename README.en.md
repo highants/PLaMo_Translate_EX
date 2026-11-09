@@ -16,21 +16,21 @@ This extension provides two distinct local inference engines tailored to differe
 flowchart TB
     subgraph EXT["PLaMo Translate (Chrome MV3)"]
         direction TB
-        UI["UI (Popup / Content Script / Tab)"]
+        UI["UI (Persistent Side Panel / Inline Popover / Tab)"]
         
         subgraph MODEA["Mode A: LM Studio Connection"]
             direction TB
-            BG["Background Service Worker"]
+            BG["Background Service Worker<br/>(SSE Streaming & Early-Stop)"]
             LMS["LM Studio Local Server<br/>http://localhost:1234"]
             LLM_A["llama.cpp / GPU VRAM<br/>(0.8B / 2B / 8B / 31B)"]
             
-            BG -->|HTTP / PFML3| LMS
+            BG -->|HTTP SSE / PFML3| LMS
             LMS --> LLM_A
         end
 
         subgraph MODEB["Mode B: In-Browser Wllama"]
             direction TB
-            OFF["Offscreen Document<br/>(Mutex Inference Queue)"]
+            OFF["Offscreen Document<br/>(Real-Time Token Streaming & Early-Stop)"]
             WLLAMA["Wllama Engine<br/>(WebAssembly / WebGPU)"]
             OPFS[("OPFS Fast Local Storage<br/>(0.8B GGUF)")]
             
@@ -81,25 +81,35 @@ Easily selectable directly from the Settings panel:
 
 ## Key Features
 
-1. **Native PFML3 Prompt Format**:
-   * Strictly constructs Preferred Networks' native markup tags (`<|plamo:tag|>`, `<|plamo:msg|>`, `<|plamo:key|>`, `<|plamo:val|>`) to maximize translation fidelity.
-2. **Japanese Politeness & Form Control (Polite / Plain / Easy Japanese)**:
-   * Explicitly choose Japanese sentence styling: **Polite** (`polite`: です/ます調), **Plain** (`plain`: だ/である調), or official **Easy Japanese** (`ja-easy` / `ja(easy)`).
-3. **Context & Glossary Support**:
-   * Supply background domain context or enforce custom term mapping pairs (e.g., `LLM=Large Language Model`).
-4. **In-Page Floating Selection Translation**:
-   * Select text on any web page to display a floating `🌐 PLaMo` button or instant translation card.
+1. **Real-Time Streaming & Proactive Early-Stop (Wllama & LM Studio Dual-Support)**:
+   * Delivers instantaneous **typewriter-like token streaming** across both in-browser Wllama and LM Studio (via Server-Sent Events).
+   * Employs proactive token monitoring for PLaMo-3 termination markers (`</s>`, `<|plamo:tag|>`, etc.), immediately aborting inference the instant generation finishes. This completely eliminates idle runaway spin-loops up to `max_tokens`.
+2. **Persistent Chrome Side Panel & Full-Screen Tab**:
+   * Clicking the toolbar icon opens the **Chrome Side Panel**, staying open beside your browser tabs so you can translate without losing context or interrupting your reading.
+   * Seamlessly inspect source language detection, customize settings, or click **🗗** to open a full two-column widescreen workspace.
+3. **Resizable & Draggable Inline Translation Popover**:
+   * Selecting text on any webpage displays a floating `🌐 PLaMo` button or instant popup.
+   * **Resize Handle**: Drag the bottom-right grip to freely adjust width and height. Custom dimensions are saved automatically for future selections.
+   * **Draggable Header**: Grab the top `🌐 PLaMo` bar to reposition the card anywhere on screen (with viewport boundary clamping).
    * Inside input fields (`<input>`, `<textarea>`, `contenteditable`), click **"✍️ Replace"** to substitute text directly with the translation.
-5. **Full-Page Inline Paragraph Translation**:
-   * Scans visible paragraphs and headings, translating them **viewport-first** so you see immediate results as you scroll.
-   * Injects clean bilingual inline blocks beneath the original paragraphs.
-   * Includes a floating control pill to **Pause/Resume**, **Hide/Show Original**, or **Restore** the page to its original DOM state.
-6. **Smart Auto Ja↔En Language Swap**:
+4. **Smart Article Extractor for Full-Page Translation**:
+   * Automatically locates primary content containers (`<article>`, `<main>`, `[role="main"]`, `.markdown-body`).
+   * Eliminates layout noise: automatically skips sidebars, advertisements, headers, footers, navigation menus, social share widgets, and comments.
+   * **Link Density Check**: Skips navigation links and indexes where anchor tags exceed 50% of the character count.
+   * **Target Language Skip**: Automatically skips paragraphs already in Japanese when translating to Japanese.
+   * Injects bilingual inline blocks viewport-first. Includes a floating control pill to **Pause/Resume**, **Hide/Show Original**, or **Restore** the page.
+5. **Accurate Source Language Detection Badge**:
+   * Detects the input language with high precision using Chrome's native CLD API and Unicode regex checks (strict Vietnamese diacritics and Spanish stopword evaluation), displaying a badge (e.g., `[English]`, `[Spanish]`) on the card and sidebar.
+6. **Native PFML3 Prompt Format**:
+   * Strictly constructs Preferred Networks' native markup tags (`<|plamo:tag|>`, `<|plamo:msg|>`, `<|plamo:key|>`, `<|plamo:val|>`) to maximize translation fidelity.
+7. **Japanese Politeness & Form Control (Polite / Plain / Easy Japanese)**:
+   * Explicitly choose Japanese sentence styling: **Polite** (`polite`: です/ます調), **Plain** (`plain`: だ/である調), or official **Easy Japanese** (`ja-easy` / `ja(easy)`).
+8. **Context & Glossary Support**:
+   * Supply background domain context or enforce custom term mapping pairs (e.g., `LLM=Large Language Model`).
+9. **Smart Auto Ja↔En Language Swap**:
    * Automatically flips the target language to English when Japanese text is entered while target is set to Japanese (preserved as Easy Japanese rewrite when `ja-easy` is selected).
-7. **Serialized Offscreen Queue**:
-   * In Mode B, multiple paragraph translation requests are dispatched through a mutex queue to ensure KV cache stability and prevent memory race conditions.
-8. **Dual Workspace (Popup & Full-Screen Tab)**:
-   * Use the compact toolbar popup or click the **🗗** button to expand into a widescreen two-column translation workspace.
+10. **Serialized Offscreen Queue**:
+    * In Mode B, multiple paragraph translation requests are dispatched through a mutex queue to ensure KV cache stability and prevent memory race conditions.
 
 ---
 
@@ -153,24 +163,29 @@ For translating with heavier models on high-performance GPUs:
 
 ## Usage Guide
 
-### 1. Toolbar Popup
+### 1. Side Panel Translation
 
-- Click the extension icon in the toolbar.
-* Enter source text and press `Ctrl + Enter` (or click **Translate**).
-* Click **🗗 Open in Full Tab** for longer documents.
-* Expand **🛠️ Context & Glossary** to enforce custom translations (e.g., `LLM=Large Language Model`).
+- Click the extension icon in your browser toolbar to open the **Chrome Side Panel**.
+- Enter or paste text, then press `Ctrl + Enter` (or click **Translate**) to stream translated text in real time.
+- The detected source language badge (e.g., `[English]`, `[Japanese]`) automatically appears in the input card header.
+- Click **🗗 Open in Full Tab** to expand into a widescreen two-column workspace.
+- Expand **🛠️ Context & Glossary** to enforce custom translation pairs (e.g., `LLM=Large Language Model`).
 
-### 2. In-Page Selection Translation
+### 2. In-Page Selection Translation (Resizable & Draggable)
 
 - Highlight any text on a webpage.
-* Click the floating `🌐 PLaMo` button near your selection to open the popover card.
-* When editing text in form fields, click **✍️ Replace** to substitute text directly.
+- Click the floating `🌐 PLaMo` button near your selection to open the popover card with real-time streaming output.
+- **Resize Handle**: Drag the bottom-right grip to freely resize the card (dimensions are remembered across sessions).
+- **Draggable Header**: Grab the top `🌐 PLaMo` bar to reposition the card anywhere on your screen.
+- **Language Badge**: View the automatically detected source language badge in the original text accordion.
+- When editing text in form fields (`<input>`, `<textarea>`, `contenteditable`), click **✍️ Replace** to substitute text directly with the translation.
 
-### 3. Whole-Page Paragraph Translation
+### 3. Smart Whole-Page Article Translation
 
-- Click **🌐 Translate Whole Page** in the popup, or right-click anywhere on the page and select **Translate this page with PLaMo Translate**.
-* Bilingual translation blocks will appear below each paragraph.
-* Use the bottom-right control pill to toggle original text visibility, pause/resume translation, or restore original content.
+- Click **🌐 Translate Whole Page** in the side panel, or right-click anywhere on the page and select **Translate this page with PLaMo Translate**.
+- **Smart Content Extraction**: Automatically focuses on article body content and excludes sidebars, navigation bars, headers, footers, advertisements, and comments.
+- Bilingual translation blocks appear beneath each paragraph viewport-first.
+- Use the bottom-right floating control pill to **Hide/Show Original**, **Pause/Resume**, or **Restore** the page.
 
 ---
 
@@ -188,21 +203,23 @@ This extension formats raw completion prompts according to Preferred Networks' o
 
 ### Stop Tokens
 
+- `</s>`
 - `<|plamo:tag|>`
-* `<|plamo:bos|>`
-* `<|plamo:eos|>`
-* `<|endoftext|>`
+- `<|plamo:bos|>`
+- `<|plamo:eos|>`
+- `<|endoftext|>`
 
 ---
 
 ## Extension Settings
 
-Access **⚙️ Settings** in the popup to configure:
+Access **⚙️ Settings** to configure:
 
 | Setting | Default | Description |
 | :--- | :--- | :--- |
 | **Inference Engine** | `LM Studio (Mode A)` | `LM Studio (Mode A)` or `In-Browser Wllama (Mode B)` |
 | **UI Language** | `Auto` | Interface language (`Auto` / `Japanese` / `English`) |
+| **In-Page Display Style** | `Floating Window (window)` | `Floating Window (window: Fastest P-core priority)` or `In-Page Card (iframe)` |
 | **LM Studio Server URL** | `http://localhost:1234` | Local inference server endpoint for Mode A |
 | **LM Studio Model** | Auto-detect | Select from `/v1/models` or enter custom model string |
 | **LM Studio API Mode** | `completions` (Recommended) | `/v1/completions` (PFML3 raw) or `/v1/chat/completions` |

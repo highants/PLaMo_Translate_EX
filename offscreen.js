@@ -477,20 +477,57 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const effectiveMaxTokens = Math.min(requestedMax, estimatedNeeded);
 
         const stop = getStopTokens();
-        const res = await wllamaInstance.createCompletion({
-          prompt: message.prompt,
-          max_tokens: effectiveMaxTokens,
-          temperature: Number(message.temperature) || 0,
-          stop
-        });
+        const abortController = new AbortController();
+        let accumulatedRaw = '';
+        let earlyStopped = false;
 
-        const rawText = res?.choices?.[0]?.text || '';
-        const translatedText = getCleanText(rawText);
+        // PLaMo-3 stop markers regex: abort IMMEDIATELY on first occurrence
+        const stopMarkerRegex = /(?:<\/s>|<\|plamo:tag|<\|plamo:bos|<\|plamo:eos|<\|endoftext)/;
+
+        try {
+          await wllamaInstance.createCompletion({
+            prompt: message.prompt,
+            max_tokens: effectiveMaxTokens,
+            temperature: Number(message.temperature) || 0,
+            stop,
+            stream: true,
+            abortSignal: abortController.signal,
+            onData: (chunk) => {
+              if (earlyStopped) return;
+              const piece = chunk?.choices?.[0]?.text || '';
+              accumulatedRaw += piece;
+
+              const cleanCurrent = getCleanText(accumulatedRaw);
+
+              // Broadcast real-time streaming tokens to sidebar / popup
+              chrome.runtime.sendMessage({
+                type: 'WLLAMA_STREAM_CHUNK',
+                chunk: piece,
+                currentText: cleanCurrent
+              }).catch(() => {});
+
+              // Hardware-level Early-Stop: If model emits </s> or structural tags, abort instantly!
+              if (stopMarkerRegex.test(accumulatedRaw)) {
+                earlyStopped = true;
+                abortController.abort();
+              }
+            }
+          });
+        } catch (err) {
+          const isAbort = err?.name === 'WllamaAbortError' ||
+                          err?.name === 'AbortError' ||
+                          String(err?.message || err).includes('abort');
+          if (!isAbort) {
+            throw err;
+          }
+        }
+
+        const translatedText = getCleanText(accumulatedRaw);
 
         return {
           ok: true,
           translatedText,
-          rawText,
+          rawText: accumulatedRaw,
           modelUsed: `${getShortModelName(loadedModelUrl)} [${wllamaState.backend || 'WASM'}]`,
           apiModeUsed: 'wllama'
         };

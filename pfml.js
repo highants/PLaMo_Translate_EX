@@ -133,7 +133,9 @@ const DEFAULT_SETTINGS = {
   temperature: 0,
   maxTokens: 1024,
   selectionMode: 'button', // 'button' | 'instant' | 'off'
-  inlineDisplayMode: 'window' // 'window' (Native Float Window, Fastest & Immune to EcoQoS) | 'iframe' (In-page OOPIF)
+  inlineDisplayMode: 'window', // 'window' (Native Float Window, Fastest & Immune to EcoQoS) | 'iframe' (In-page OOPIF)
+  popoverCustomWidth: 400,
+  popoverCustomHeight: 0
 };
 
 /**
@@ -162,6 +164,113 @@ function getLanguageDisplayName(code, uiLang = 'ja') {
     return `${lang.enName} (${lang.code})`;
   }
   return `${lang.name} (${lang.code})`;
+}
+
+/**
+ * Get concise language name without code suffix (e.g. '日本語', 'English')
+ * @param {string} code
+ * @param {'ja'|'en'} [uiLang='ja']
+ * @returns {string}
+ */
+function getLanguageSimpleName(code, uiLang = 'ja') {
+  const norm = normalizeLanguageCode(code);
+  const lang = PLAMO_LANGUAGES.find(l => l.code === norm);
+  if (!lang) return code;
+  return uiLang === 'en' ? lang.enName : lang.name;
+}
+
+/**
+ * Heuristic Language Detector for input text
+ * Inspects character scripts and Unicode ranges to accurately identify source language
+ * @param {string} text
+ * @returns {string} ISO language code e.g. 'ja', 'en', 'zh', 'ko', 'ru', etc.
+ */
+function detectLanguage(text) {
+  if (!text || typeof text !== 'string') return 'auto';
+  const clean = text.trim();
+  if (!clean) return 'auto';
+
+  // 1. Japanese (Hiragana or Katakana present)
+  if (/[\u3040-\u309F\u30A0-\u30FF]/.test(clean)) {
+    return 'ja';
+  }
+  // 2. Korean (Hangul syllables or jamo)
+  if (/[\uAC00-\uD7AF\u1100-\u11FF]/.test(clean)) {
+    return 'ko';
+  }
+  // 3. Chinese (Hanzi without Japanese kana)
+  if (/[\u4E00-\u9FFF]/.test(clean)) {
+    return 'zh';
+  }
+  // 4. Cyrillic (Russian, Ukrainian, etc.)
+  if (/[\u0400-\u04FF]/.test(clean)) {
+    return 'ru';
+  }
+  // 5. Arabic script
+  if (/[\u0600-\u06FF]/.test(clean)) {
+    return 'ar';
+  }
+  // 6. Thai script
+  if (/[\u0E00-\u0E7F]/.test(clean)) {
+    return 'th';
+  }
+  // 7. Devanagari (Hindi)
+  if (/[\u0900-\u097F]/.test(clean)) {
+    return 'hi';
+  }
+  // 8. Greek
+  if (/[\u0370-\u03FF]/.test(clean)) {
+    return 'el';
+  }
+  // 9. Vietnamese (Latin Extended Additional: \u1EA0-\u1EF9 and đ/Đ - 100% unique to Vietnamese)
+  if (/[\u1EA0-\u1EF9đĐ]/.test(clean)) {
+    return 'vi';
+  }
+  // 10. Spanish unique characters (ñ/Ñ, ¿, ¡)
+  if (/[ñÑ¿¡]/.test(clean)) {
+    return 'es';
+  }
+  // 11. German umlauts & Eszett (ä, ö, ü, ß)
+  if (/[äöüßÄÖÜ]/.test(clean)) {
+    return 'de';
+  }
+  // 12. French unique ligatures & cedilla (ç/Ç, œ/Œ, æ/Æ)
+  if (/[çÇœŒæÆ]/.test(clean)) {
+    return 'fr';
+  }
+  // 13. Portuguese unique nasal tildes (ã/Ã, õ/Õ)
+  if (/[ãõÃÕ]/.test(clean)) {
+    return 'pt';
+  }
+
+  // 14. High-frequency word heuristics for Latin-based European languages
+  if (/\b(el|la|los|las|un|una|unos|unas|del|por|para|con|este|esta|esto|pero|más|está|están|como|en|amigo|hola|gracias|buenos|días|noches|usted)\b/i.test(clean)) {
+    return 'es';
+  }
+  if (/\b(le|la|les|un|une|des|du|dans|avec|pour|est|sont|sur|cette|ces|mais|qui|bonjour|merci|monsieur|oui)\b/i.test(clean)) {
+    return 'fr';
+  }
+  if (/\b(der|die|das|ein|eine|eines|einer|und|ist|sind|nicht|mit|für|auf|dass|wie|hallo|danke|bitte|guten)\b/i.test(clean)) {
+    return 'de';
+  }
+  if (/\b(il|lo|la|i|gli|le|un|uno|una|di|del|della|per|con|su|sono|questo|questa|ciao|grazie|buongiorno)\b/i.test(clean)) {
+    return 'it';
+  }
+  if (/\b(o|a|os|as|um|uma|do|da|dos|das|em|para|com|por|não|sim|obrigado|olá|bom|dia)\b/i.test(clean)) {
+    return 'pt';
+  }
+
+  // Common acute accents in Spanish/Portuguese (á, é, í, ó, ú)
+  if (/[áéíóúÁÉÍÓÚ]/.test(clean)) {
+    return 'es';
+  }
+
+  // Default to English if Latin alphabet is predominant
+  if (/[a-zA-Z]/.test(clean)) {
+    return 'en';
+  }
+
+  return 'auto';
 }
 
 /**
@@ -358,6 +467,83 @@ async function fetchLmStudioModels(baseUrl = 'http://localhost:1234') {
 }
 
 /**
+ * Read SSE (Server-Sent Events) stream from OpenAI-compatible endpoint (LM Studio)
+ * Supports real-time token emission and proactive Early-Stop on PLaMo stop markers.
+ */
+async function readSseStream(response, onChunk, abortController, isChat = false) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let accumulatedRaw = '';
+  let earlyStopped = false;
+
+  const stopMarkerRegex = /(?:<\/s>|<\|plamo:tag|<\|plamo:bos|<\|plamo:eos|<\|endoftext)/;
+
+  try {
+    while (true) {
+      if (earlyStopped || abortController?.signal?.aborted) break;
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      const textChunk = typeof value === 'string' ? value : decoder.decode(value, { stream: true });
+      buffer += textChunk;
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // Preserve incomplete trailing chunk
+
+      for (const rawLine of lines) {
+        if (earlyStopped) break;
+        const line = rawLine.trim();
+        if (!line || line.startsWith(':')) continue;
+
+        if (line === 'data: [DONE]') {
+          return accumulatedRaw;
+        }
+
+        if (line.startsWith('data:')) {
+          const jsonStr = line.slice(5).trim();
+          try {
+            const data = JSON.parse(jsonStr);
+            const piece = isChat
+              ? (data.choices?.[0]?.delta?.content || '')
+              : (data.choices?.[0]?.text || '');
+
+            if (piece) {
+              accumulatedRaw += piece;
+              const cleanCurrent = cleanTranslationOutput(accumulatedRaw);
+              if (onChunk) {
+                onChunk({ chunk: piece, currentText: cleanCurrent });
+              }
+
+              // Hardware/Network-level Early-Stop for PLaMo tokens
+              if (stopMarkerRegex.test(accumulatedRaw)) {
+                earlyStopped = true;
+                if (abortController) {
+                  abortController.abort();
+                }
+                break;
+              }
+            }
+          } catch {
+            // Ignore partial/malformed JSON chunks in stream
+          }
+        }
+      }
+    }
+  } catch (err) {
+    const isAbort = err?.name === 'AbortError' || String(err?.message || err).includes('abort');
+    if (!isAbort) {
+      throw err;
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {}
+  }
+
+  return accumulatedRaw;
+}
+
+/**
  * Execute translation call against LM Studio
  */
 async function executePlamoTranslation(options = {}) {
@@ -369,7 +555,9 @@ async function executePlamoTranslation(options = {}) {
     effectiveTargetLang = 'ja',
     sourceLang = 'auto',
     temperature = 0,
-    maxTokens = 1024
+    maxTokens = 1024,
+    stream = true,
+    onChunk = null
   } = options;
 
   const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
@@ -389,24 +577,31 @@ async function executePlamoTranslation(options = {}) {
 
   // Attempt completions mode first (recommended for raw PFML3)
   if (apiMode === 'completions') {
+    const abortController = new AbortController();
     try {
       const completionsUrl = `${cleanBaseUrl}/v1/completions`;
       const res = await fetch(completionsUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({
           model: resolvedModel,
           prompt: prompt,
           temperature: Number(temperature) || 0,
           max_tokens: Number(maxTokens) || 1024,
           stop: STOP_TOKENS,
-          stream: false
+          stream: Boolean(stream)
         })
       });
 
       if (res.ok) {
-        const data = await res.json();
-        const rawText = data.choices?.[0]?.text || '';
+        let rawText = '';
+        if (stream && res.body) {
+          rawText = await readSseStream(res, onChunk, abortController, false);
+        } else {
+          const data = await res.json();
+          rawText = data.choices?.[0]?.text || '';
+        }
         return {
           ok: true,
           translatedText: cleanTranslationOutput(rawText),
@@ -432,6 +627,7 @@ async function executePlamoTranslation(options = {}) {
   }
 
   // Chat completions mode
+  const chatAbortController = new AbortController();
   const chatUrl = `${cleanBaseUrl}/v1/chat/completions`;
   const chatPayload = {
     model: resolvedModel,
@@ -441,7 +637,7 @@ async function executePlamoTranslation(options = {}) {
     temperature: Number(temperature) || 0,
     max_tokens: Number(maxTokens) || 1024,
     stop: STOP_TOKENS,
-    stream: false,
+    stream: Boolean(stream),
     chat_template_kwargs: {
       target_lang: normalizeLanguageCode(effectiveTargetLang),
       ...(sourceLang && sourceLang !== 'auto' ? { source_lang: normalizeLanguageCode(sourceLang) } : {})
@@ -451,6 +647,7 @@ async function executePlamoTranslation(options = {}) {
   const res = await fetch(chatUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal: chatAbortController.signal,
     body: JSON.stringify(chatPayload)
   });
 
@@ -459,8 +656,14 @@ async function executePlamoTranslation(options = {}) {
     throw new Error(`Chat API エラー (${res.status}): ${errorText}`);
   }
 
-  const data = await res.json();
-  const rawText = data.choices?.[0]?.message?.content || '';
+  let rawText = '';
+  if (stream && res.body) {
+    rawText = await readSseStream(res, onChunk, chatAbortController, true);
+  } else {
+    const data = await res.json();
+    rawText = data.choices?.[0]?.message?.content || '';
+  }
+
   return {
     ok: true,
     translatedText: cleanTranslationOutput(rawText),
@@ -483,11 +686,14 @@ if (typeof module !== 'undefined' && module.exports) {
     DEFAULT_SETTINGS,
     normalizeLanguageCode,
     getLanguageDisplayName,
+    getLanguageSimpleName,
+    detectLanguage,
     parseGlossary,
     isJapaneseText,
     resolveTargetLang,
     buildPfml3Prompt,
     cleanTranslationOutput,
+    readSseStream,
     fetchLmStudioModels,
     executePlamoTranslation
   };

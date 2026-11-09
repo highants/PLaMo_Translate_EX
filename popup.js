@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const formSelect = document.getElementById('formSelect');
 
   const inputText = document.getElementById('inputText');
+  const detectedLangBadge = document.getElementById('detectedLangBadge');
   const charCount = document.getElementById('charCount');
   const btnClearInput = document.getElementById('btnClearInput');
   const contextInput = document.getElementById('contextInput');
@@ -161,8 +162,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function updateCharCount() {
-    const count = inputText.value.length;
+    const val = inputText.value;
+    const count = val.length;
     charCount.textContent = PlamoI18n.t('charCountUnit', { n: count }, currentUiLang);
+
+    if (detectedLangBadge) {
+      if (count > 0 && typeof detectLanguage === 'function') {
+        const detected = detectLanguage(val);
+        const name = (typeof getLanguageSimpleName === 'function')
+          ? getLanguageSimpleName(detected, currentUiLang)
+          : detected;
+        detectedLangBadge.textContent = name;
+        detectedLangBadge.style.display = 'inline-flex';
+      } else {
+        detectedLangBadge.style.display = 'none';
+      }
+    }
   }
 
   // -------------------------------------------------------------
@@ -432,10 +447,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         outputText.style.display = 'block';
 
         // Badges
-        const isSwitched = response.effectiveTargetLang && response.effectiveTargetLang !== targetLang;
+        const isSwitched = Boolean(response.autoSwitched);
         effectiveTargetBadge.textContent = isSwitched
           ? (currentUiLang === 'en' ? `Auto: ${response.effectiveTargetLang.toUpperCase()}` : `自動切替: ${response.effectiveTargetLang.toUpperCase()}`)
-          : targetLang.toUpperCase();
+          : (response.effectiveTargetLang || targetLang).toUpperCase();
         effectiveTargetBadge.style.display = 'inline-flex';
 
         if (response.modelUsed) {
@@ -730,6 +745,36 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // -------------------------------------------------------------
+  // Side Panel Auto-Translate Receiver
+  // -------------------------------------------------------------
+  async function checkPendingSidebarText() {
+    try {
+      const data = await chrome.storage.local.get(['pendingSidebarText', 'pendingSidebarTimestamp']);
+      if (data.pendingSidebarText && (Date.now() - (data.pendingSidebarTimestamp || 0) < 10000)) {
+        await chrome.storage.local.remove(['pendingSidebarText', 'pendingSidebarTimestamp']);
+        inputText.value = data.pendingSidebarText;
+        updateCharCount();
+        performTranslation();
+      }
+    } catch {}
+  }
+
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message && message.type === 'PLAMO_SIDE_PANEL_AUTO_TRANSLATE' && message.text) {
+      inputText.value = message.text;
+      updateCharCount();
+      performTranslation();
+    } else if (message && (message.type === 'WLLAMA_STREAM_CHUNK' || message.type === 'PLAMO_STREAM_CHUNK')) {
+      if (message.currentText) {
+        outputPlaceholder.style.display = 'none';
+        outputLoading.style.display = 'none';
+        outputText.style.display = 'block';
+        outputText.textContent = message.currentText;
+      }
+    }
+  });
+
+  // -------------------------------------------------------------
   // Startup
   // -------------------------------------------------------------
   await loadSettings();
@@ -738,4 +783,5 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else {
     checkConnection(true); // Silent connection check on popup open
   }
+  await checkPendingSidebarText();
 });

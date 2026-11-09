@@ -61,36 +61,19 @@
       .replace(/'/g, '&#039;');
   }
 
-  // 3. Post size changes to parent content script (iframe mode only)
-  function notifyDimensions() {
-    if (isWindowMode) return;
-    if (!cardEl) return;
-    const isTranslating = cardEl.classList.contains('is-translating');
-    const minH = isTranslating ? 36 : 120;
-    const height = Math.min(450, Math.max(minH, cardEl.offsetHeight));
-    const width = isTranslating ? 300 : 400;
-    window.parent.postMessage({ type: 'PLAMO_RESIZE', height, width, isTranslating }, '*');
-  }
+  // 3. Post height changes to parent content script (iframe mode only)
+  let userHasResizedHeight = false;
 
   function notifyHeight() {
-    notifyDimensions();
-  }
-
-  // Active focus retention to guarantee Chromium grants foreground priority
-  function requestFocus() {
-    try {
-      window.focus();
-      if (cardEl && typeof cardEl.focus === 'function') {
-        cardEl.focus();
-      }
-      if (!isWindowMode) {
-        window.parent.postMessage({ type: 'PLAMO_REQUEST_FOCUS' }, '*');
-      }
-    } catch {}
+    if (isWindowMode) return;
+    if (!cardEl) return;
+    if (userHasResizedHeight) return; // Retain user-specified custom height
+    const height = Math.min(420, Math.max(140, cardEl.offsetHeight));
+    window.parent.postMessage({ type: 'PLAMO_RESIZE', height }, '*');
   }
 
   const resizeObserver = new ResizeObserver(() => {
-    notifyDimensions();
+    notifyHeight();
   });
   resizeObserver.observe(cardEl);
 
@@ -135,21 +118,6 @@
   }
 
   // 5. Execute Translation
-  let focusRetentionTimer = null;
-
-  function startFocusRetention() {
-    stopFocusRetention();
-    requestFocus();
-    focusRetentionTimer = setInterval(requestFocus, 120);
-  }
-
-  function stopFocusRetention() {
-    if (focusRetentionTimer) {
-      clearInterval(focusRetentionTimer);
-      focusRetentionTimer = null;
-    }
-  }
-
   async function performTranslate() {
     const requestId = ++activeRequestId;
     const uiLang = (typeof PlamoI18n !== 'undefined' && PlamoI18n.resolveUiLang)
@@ -159,38 +127,17 @@
     const targetLang = targetLangSelect.value;
     const form = formSelect.value;
 
-    // In iframe mode, display sleek minimal operating indicator
-    if (!isWindowMode) {
-      cardEl.classList.remove('is-ready');
-      cardEl.classList.add('is-translating');
-      cardBody.innerHTML = `
-        <div class="plamo-ext-indicator-bar">
-          <span class="plamo-ext-brand-icon">🌐</span>
-          <div class="plamo-ext-spinner"></div>
-          <span id="loadingSpan" class="plamo-ext-loading-text">${t('cardTranslating')}</span>
-          <button class="plamo-ext-btn-cancel-translating" id="btnCancelTranslating" title="${t('btnCloseWindow') || '閉じる (Esc)'}">✕</button>
-        </div>
-      `;
+    cardBody.innerHTML = `
+      <div class="plamo-ext-loading">
+        <div class="plamo-ext-spinner"></div>
+        <span id="loadingSpan">${t('cardTranslating')}</span>
+      </div>
+    `;
+    notifyHeight();
 
-      const btnCancel = document.getElementById('btnCancelTranslating');
-      if (btnCancel) {
-        btnCancel.addEventListener('click', (e) => {
-          e.stopPropagation();
-          stopFocusRetention();
-          window.parent.postMessage({ type: 'PLAMO_CLOSE' }, '*');
-        });
-      }
-    } else {
-      cardBody.innerHTML = `
-        <div class="plamo-ext-loading">
-          <div class="plamo-ext-spinner"></div>
-          <span id="loadingSpan">${t('cardTranslating')}</span>
-        </div>
-      `;
-    }
-
-    notifyDimensions();
-    startFocusRetention();
+    try {
+      window.focus();
+    } catch {}
 
     try {
       const response = await chrome.runtime.sendMessage({
@@ -204,24 +151,29 @@
 
       if (requestId !== activeRequestId) return;
 
-      stopFocusRetention();
-      cardEl.classList.remove('is-translating');
-      cardEl.classList.add('is-ready');
-
       if (response && response.ok) {
         translatedText = response.translatedText || t('outputPlaceholder');
-        const autoSwitched = response.effectiveTargetLang && response.effectiveTargetLang !== targetLang;
+        // Only show auto-switch notice if actual Japanese -> English flip occurred
+        const autoSwitched = Boolean(response.autoSwitched);
 
         let autoNoticeHtml = '';
         if (autoSwitched) {
           autoNoticeHtml = `<div class="plamo-ext-auto-badge">${t('autoSwitchedBadge')}</div>`;
         }
 
+        const detectedLangCode = response.detectedSourceLang || (typeof detectLanguage === 'function' ? detectLanguage(currentText) : 'auto');
+        const sourceLangLabel = (typeof getLanguageSimpleName === 'function')
+          ? getLanguageSimpleName(detectedLangCode, uiLang)
+          : (typeof getLanguageDisplayName === 'function' ? getLanguageDisplayName(detectedLangCode, uiLang) : detectedLangCode);
+
         cardBody.innerHTML = `
           ${autoNoticeHtml}
           <div class="plamo-ext-result-content" style="white-space: pre-wrap;">${escapeHtml(translatedText)}</div>
           <details class="plamo-ext-source-details">
-            <summary>${t('showSource', { n: currentText.length })}</summary>
+            <summary>
+              <span>${t('showSource', { n: currentText.length })}</span>
+              <span class="plamo-ext-source-lang-badge">${escapeHtml(sourceLangLabel)}</span>
+            </summary>
             <div class="plamo-ext-source-text">${escapeHtml(currentText)}</div>
           </details>
         `;
@@ -246,10 +198,6 @@
       }
     } catch (err) {
       if (requestId !== activeRequestId) return;
-      stopFocusRetention();
-      cardEl.classList.remove('is-translating');
-      cardEl.classList.add('is-ready');
-
       cardBody.innerHTML = `
         <div class="plamo-ext-error-msg">
           <strong>${uiLang === 'en' ? 'Communication Error:' : '通信エラー:'}</strong><br>
@@ -257,29 +205,61 @@
         </div>
       `;
     } finally {
-      stopFocusRetention();
-      setTimeout(notifyDimensions, 30);
+      setTimeout(notifyHeight, 20);
     }
   }
 
-  // 6. Listen for Wllama Progress
+  // 6. Listen for Progress and Real-time Streaming Chunks (Wllama & LM Studio)
   chrome.runtime.onMessage.addListener((message) => {
-    if (!message || message.type !== 'WLLAMA_PROGRESS' || !message.state) return;
-    const state = message.state;
-    const span = document.getElementById('loadingSpan');
-    if (!span) return;
+    if (!message) return;
 
-    const uiLang = (typeof PlamoI18n !== 'undefined' && PlamoI18n.resolveUiLang)
-      ? PlamoI18n.resolveUiLang(currentSettings.uiLang)
-      : 'ja';
+    if ((message.type === 'WLLAMA_STREAM_CHUNK' || message.type === 'PLAMO_STREAM_CHUNK') && message.currentText) {
+      let streamingContent = document.getElementById('streamingContent');
+      if (!streamingContent) {
+        const detectedLangCode = (typeof detectLanguage === 'function') ? detectLanguage(currentText) : 'auto';
+        const uiLang = (typeof PlamoI18n !== 'undefined' && PlamoI18n.resolveUiLang)
+          ? PlamoI18n.resolveUiLang(currentSettings.uiLang)
+          : 'ja';
+        const sourceLangLabel = (typeof getLanguageSimpleName === 'function')
+          ? getLanguageSimpleName(detectedLangCode, uiLang)
+          : (typeof getLanguageDisplayName === 'function' ? getLanguageDisplayName(detectedLangCode, uiLang) : detectedLangCode);
 
-    if (state.status === 'downloading' || state.status === 'loading') {
-      const percent = state.percent || 0;
-      const label = state.status === 'downloading'
-        ? (uiLang === 'en' ? `Downloading model: ${percent}%...` : `モデルDL中: ${percent}%...`)
-        : (uiLang === 'en' ? `Initializing model: ${percent}%...` : `モデル読込中: ${percent}%...`);
-      span.textContent = label;
-      notifyDimensions();
+        cardBody.innerHTML = `
+          <div class="plamo-ext-result-content" id="streamingContent" style="white-space: pre-wrap;"></div>
+          <details class="plamo-ext-source-details">
+            <summary>
+              <span>${t('showSource', { n: currentText.length })}</span>
+              <span class="plamo-ext-source-lang-badge">${escapeHtml(sourceLangLabel)}</span>
+            </summary>
+            <div class="plamo-ext-source-text">${escapeHtml(currentText)}</div>
+          </details>
+        `;
+        streamingContent = document.getElementById('streamingContent');
+      }
+      if (streamingContent) {
+        streamingContent.textContent = message.currentText;
+        notifyHeight();
+      }
+      return;
+    }
+
+    if (message.type === 'WLLAMA_PROGRESS' && message.state) {
+      const state = message.state;
+      const span = document.getElementById('loadingSpan');
+      if (!span) return;
+
+      const uiLang = (typeof PlamoI18n !== 'undefined' && PlamoI18n.resolveUiLang)
+        ? PlamoI18n.resolveUiLang(currentSettings.uiLang)
+        : 'ja';
+
+      if (state.status === 'downloading' || state.status === 'loading') {
+        const percent = state.percent || 0;
+        const label = state.status === 'downloading'
+          ? (uiLang === 'en' ? `Downloading model: ${percent}%...` : `モデルDL中: ${percent}%...`)
+          : (uiLang === 'en' ? `Initializing model: ${percent}%...` : `モデル読込中: ${percent}%...`);
+        span.textContent = label;
+        notifyHeight();
+      }
     }
   });
 
@@ -351,18 +331,145 @@
     }
   });
 
-  // 8. Start
-  if (!isWindowMode) {
-    cardEl.classList.add('is-translating');
+  // 7. Interactive Resize Handle (iframe mode)
+  function initResizeHandle() {
+    const handle = document.getElementById('resizeHandle');
+    if (!handle || isWindowMode) return;
+
+    let isDragging = false;
+    let startScreenX = 0;
+    let startScreenY = 0;
+    let startW = 0;
+    let startH = 0;
+
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      isDragging = true;
+      userHasResizedHeight = true;
+
+      startScreenX = (typeof e.screenX === 'number' && e.screenX !== 0) ? e.screenX : e.clientX;
+      startScreenY = (typeof e.screenY === 'number' && e.screenY !== 0) ? e.screenY : e.clientY;
+      startW = document.documentElement.clientWidth || window.innerWidth;
+      startH = document.documentElement.clientHeight || window.innerHeight;
+
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch {}
+
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    handle.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+
+      const currentScreenX = (typeof e.screenX === 'number' && e.screenX !== 0) ? e.screenX : e.clientX;
+      const currentScreenY = (typeof e.screenY === 'number' && e.screenY !== 0) ? e.screenY : e.clientY;
+
+      const dx = currentScreenX - startScreenX;
+      const dy = currentScreenY - startScreenY;
+
+      const newW = Math.max(300, Math.min(window.screen.availWidth - 40, Math.round(startW + dx)));
+      const newH = Math.max(140, Math.min(window.screen.availHeight - 80, Math.round(startH + dy)));
+
+      window.parent.postMessage({ type: 'PLAMO_USER_RESIZE', width: newW, height: newH }, '*');
+    });
+
+    const endDrag = (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      try {
+        handle.releasePointerCapture(e.pointerId);
+      } catch {}
+
+      const finalW = document.documentElement.clientWidth || window.innerWidth;
+      const finalH = document.documentElement.clientHeight || window.innerHeight;
+
+      chrome.storage.local.set({
+        popoverCustomWidth: finalW,
+        popoverCustomHeight: finalH
+      }).catch(() => {});
+    };
+
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
   }
 
+  // 7.2 Interactive Window Move / Drag (iframe mode)
+  function initDragMove() {
+    const header = document.querySelector('.plamo-ext-card-header');
+    if (!header || isWindowMode) return;
+
+    let isMoving = false;
+    let lastScreenX = 0;
+    let lastScreenY = 0;
+
+    header.addEventListener('pointerdown', (e) => {
+      // Ignore if clicking on interactive controls (language select, form select, close button, etc.)
+      if (e.target.closest('select, button, input, a')) return;
+      if (e.button !== 0) return; // Only primary button
+
+      isMoving = true;
+      lastScreenX = (typeof e.screenX === 'number' && e.screenX !== 0) ? e.screenX : e.clientX;
+      lastScreenY = (typeof e.screenY === 'number' && e.screenY !== 0) ? e.screenY : e.clientY;
+
+      try {
+        header.setPointerCapture(e.pointerId);
+      } catch {}
+
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    header.addEventListener('pointermove', (e) => {
+      if (!isMoving) return;
+
+      const currentScreenX = (typeof e.screenX === 'number' && e.screenX !== 0) ? e.screenX : e.clientX;
+      const currentScreenY = (typeof e.screenY === 'number' && e.screenY !== 0) ? e.screenY : e.clientY;
+
+      const deltaX = currentScreenX - lastScreenX;
+      const deltaY = currentScreenY - lastScreenY;
+
+      lastScreenX = currentScreenX;
+      lastScreenY = currentScreenY;
+
+      if (deltaX !== 0 || deltaY !== 0) {
+        window.parent.postMessage({ type: 'PLAMO_USER_MOVE', deltaX, deltaY }, '*');
+      }
+    });
+
+    const endMove = (e) => {
+      if (!isMoving) return;
+      isMoving = false;
+      try {
+        header.releasePointerCapture(e.pointerId);
+      } catch {}
+    };
+
+    header.addEventListener('pointerup', endMove);
+    header.addEventListener('pointercancel', endMove);
+  }
+
+  // 8. Start
   chrome.storage.local.get(DEFAULT_SETTINGS, (stored) => {
     if (stored) {
       currentSettings = { ...DEFAULT_SETTINGS, ...stored };
     }
+    if (currentSettings.popoverCustomHeight && currentSettings.popoverCustomHeight > 0) {
+      userHasResizedHeight = true;
+    }
     initControls();
-    notifyDimensions();
-    requestFocus();
+    initResizeHandle();
+    initDragMove();
+    notifyHeight();
+
+    // Focus window and card container to trigger foreground priority in Chromium (Approach C)
+    try {
+      window.focus();
+      if (cardEl && typeof cardEl.focus === 'function') {
+        cardEl.focus();
+      }
+    } catch {}
 
     if (currentText) {
       performTranslate();

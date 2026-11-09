@@ -5,8 +5,19 @@
 
 importScripts('i18n.js', 'pfml.js');
 
-// 1. Setup Context Menus with i18n support
+// 1. Setup Context Menus and Side Panel Behavior with i18n support
+async function configureSidePanel() {
+  if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+    try {
+      await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+    } catch (err) {
+      console.warn('Failed to configure side panel behavior:', err);
+    }
+  }
+}
+
 async function setupContextMenus() {
+  await configureSidePanel();
   try {
     const stored = await chrome.storage.local.get(DEFAULT_SETTINGS);
     const lang = PlamoI18n.resolveUiLang(stored.uiLang || DEFAULT_SETTINGS.uiLang);
@@ -33,6 +44,9 @@ chrome.runtime.onInstalled.addListener(() => {
   setupContextMenus();
 });
 
+// Also ensure side panel behavior is set on service worker start
+configureSidePanel();
+
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.uiLang) {
     setupContextMenus();
@@ -53,7 +67,14 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         text: selectedText
       });
     } catch (err) {
-      console.warn('Could not send message to tab, injecting script or opening popup:', err);
+      console.warn('Could not send message to tab, opening side panel:', err);
+      if (chrome.sidePanel && chrome.sidePanel.open) {
+        await chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
+      }
+      chrome.runtime.sendMessage({
+        type: 'PLAMO_SIDE_PANEL_AUTO_TRANSLATE',
+        text: selectedText
+      }).catch(() => {});
     }
   } else if (info.menuItemId === 'plamo-translate-page') {
     try {
@@ -115,6 +136,42 @@ async function sendToOffscreen(payload) {
     ...payload,
     target: 'offscreen'
   });
+}
+
+/**
+ * Detect language using Chrome native i18n CLD API with heuristic fallback
+ * @param {string} text
+ * @param {string} [specifiedSourceLang='auto']
+ * @returns {Promise<string>}
+ */
+async function resolveDetectedLanguage(text, specifiedSourceLang) {
+  if (specifiedSourceLang && specifiedSourceLang !== 'auto') {
+    return specifiedSourceLang;
+  }
+  if (!text || typeof text !== 'string') return 'auto';
+
+  // 1. Try Chrome native i18n CLD API (supports 100+ languages accurately)
+  if (typeof chrome !== 'undefined' && chrome.i18n && typeof chrome.i18n.detectLanguage === 'function') {
+    try {
+      const res = await new Promise((resolve) => {
+        chrome.i18n.detectLanguage(text, (result) => resolve(result));
+      });
+      if (res && Array.isArray(res.languages) && res.languages.length > 0) {
+        const top = res.languages[0];
+        if (top && top.language && top.language !== 'und' && top.percentage > 30) {
+          return top.language;
+        }
+      }
+    } catch (err) {
+      console.warn('chrome.i18n.detectLanguage failed, using fallback:', err);
+    }
+  }
+
+  // 2. Fallback to Unicode heuristic detector
+  if (typeof detectLanguage === 'function') {
+    return detectLanguage(text);
+  }
+  return 'auto';
 }
 
 // Active Native Float Window tracker
@@ -238,6 +295,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const engineMode = message.engineMode || settings.engineMode || 'lmstudio';
 
           const effectiveTargetLang = resolveTargetLang(text, sourceLang, targetLang, autoSwitchJaEn, form);
+          const detectedSourceLang = await resolveDetectedLanguage(text, sourceLang);
+          const normTarget = normalizeLanguageCode(targetLang);
+          const autoSwitched = Boolean(autoSwitchJaEn && (sourceLang === 'auto' || !sourceLang) && normTarget === 'ja' && isJapaneseText(text) && effectiveTargetLang === 'en');
 
           const pfmlPrompt = buildPfml3Prompt({
             text,
@@ -268,6 +328,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               translatedText: offRes.translatedText,
               prompt: pfmlPrompt,
               effectiveTargetLang,
+              detectedSourceLang,
+              autoSwitched,
               modelUsed: offRes.modelUsed,
               apiModeUsed: offRes.apiModeUsed
             });
@@ -280,7 +342,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               effectiveTargetLang,
               sourceLang,
               temperature: message.temperature !== undefined ? message.temperature : settings.temperature,
-              maxTokens: message.maxTokens !== undefined ? message.maxTokens : settings.maxTokens
+              maxTokens: message.maxTokens !== undefined ? message.maxTokens : settings.maxTokens,
+              stream: true,
+              onChunk: ({ chunk, currentText }) => {
+                // Broadcast real-time streaming tokens to sidebar / popover
+                chrome.runtime.sendMessage({
+                  type: 'PLAMO_STREAM_CHUNK',
+                  chunk,
+                  currentText,
+                  engineMode: 'lmstudio'
+                }).catch(() => {});
+                // Also broadcast WLLAMA_STREAM_CHUNK for complete backward compatibility
+                chrome.runtime.sendMessage({
+                  type: 'WLLAMA_STREAM_CHUNK',
+                  chunk,
+                  currentText,
+                  engineMode: 'lmstudio'
+                }).catch(() => {});
+              }
             });
 
             sendResponse({
@@ -288,6 +367,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               translatedText: res.translatedText,
               prompt: pfmlPrompt,
               effectiveTargetLang,
+              detectedSourceLang,
+              autoSwitched,
               modelUsed: res.modelUsed,
               apiModeUsed: res.apiModeUsed
             });

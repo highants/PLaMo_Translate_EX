@@ -69,15 +69,16 @@ body {
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.5;
-  width: 500px;
-  min-height: 580px;
-  max-height: 600px;
+  width: 100%;
+  min-width: 320px;
+  min-height: 100vh;
+  box-sizing: border-box;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Full-tab mode expansion */
+/* Standalone desktop window or broad display */
 @media (min-width: 640px) {
   body {
     width: 100vw;
@@ -215,7 +216,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 .btn-tool {

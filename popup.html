@@ -80,6 +80,7 @@
         <div class="card-header">
           <span class="card-title" data-i18n="inputCardTitle">原文テキスト</span>
           <div class="card-header-actions">
+            <span id="detectedLangBadge" class="badge" style="display:none; font-size:11px; padding:2px 6px;"></span>
             <span id="charCount" class="char-count">0 文字</span>
             <button id="btnClearInput" class="btn-text-sm" data-i18n="btnClear" title="入力をクリア">クリア</button>
           </div>
@@ -251,23 +252,25 @@
         </div>
 
         <!-- In-Page Selection Popup Mode -->
-        <div class="setting-item">
-          <label for="settingSelectionMode" data-i18n="labelSelectionMode">Webページ内での選択テキスト翻訳</label>
-          <select id="settingSelectionMode" class="select-input">
-            <option value="button" data-i18n="optSelectionModeButton">アイコンボタンを表示 (クリックで翻訳カードを開く)</option>
-            <option value="instant" data-i18n="optSelectionModeInstant">選択時に即座に翻訳カードを開く</option>
-            <option value="off" data-i18n="optSelectionModeOff">無効 (右クリックメニューまたはポップアップから翻訳)</option>
-          </select>
-        </div>
+        <div id="inlineSettingsContainer">
+          <div class="setting-item">
+            <label for="settingSelectionMode" data-i18n="labelSelectionMode">Webページ内での選択テキスト翻訳</label>
+            <select id="settingSelectionMode" class="select-input">
+              <option value="button" data-i18n="optSelectionModeButton">アイコンボタンを表示 (クリックで翻訳カードを開く)</option>
+              <option value="instant" data-i18n="optSelectionModeInstant">選択時に即座に翻訳カードを開く</option>
+              <option value="off" data-i18n="optSelectionModeOff">無効 (右クリックメニューまたはサイドバーから翻訳)</option>
+            </select>
+          </div>
 
-        <!-- In-Page Translation Display Style (Window vs Iframe) -->
-        <div class="setting-item">
-          <label for="settingInlineDisplayMode" data-i18n="labelInlineDisplayMode">インライン翻訳の表示形式</label>
-          <select id="settingInlineDisplayMode" class="select-input">
-            <option value="window" data-i18n="optInlineModeWindow">フロート小窓 (P-core最速 / 推奨)</option>
-            <option value="iframe" data-i18n="optInlineModeIframe">ページ内カード (iframe)</option>
-          </select>
-          <span class="setting-desc" data-i18n="descInlineDisplayMode">デスクトップ小窓にすることでWindowsの効率モード(EcoQoS)を回避し、メイン窓と同じ最高速で推論します</span>
+          <!-- In-Page Translation Display Style (Window vs Iframe) -->
+          <div class="setting-item">
+            <label for="settingInlineDisplayMode" data-i18n="labelInlineDisplayMode">インライン翻訳の表示形式</label>
+            <select id="settingInlineDisplayMode" class="select-input">
+              <option value="window" data-i18n="optInlineModeWindow">フロート小窓 (P-core最速 / 推奨)</option>
+              <option value="iframe" data-i18n="optInlineModeIframe">ページ内カード (iframe)</option>
+            </select>
+            <span class="setting-desc" data-i18n="descInlineDisplayMode">デスクトップ小窓にすることでWindowsの効率モード(EcoQoS)を回避し、メイン窓と同じ最高速で推論します</span>
+          </div>
         </div>
 
         <!-- Auto Ja/En switch -->

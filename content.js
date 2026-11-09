@@ -15,6 +15,7 @@
   let popoverCardEl = null;
   let pageBarEl = null;
   let lastSelectionData = null;
+  let userHasMovedPopover = false;
   let isPageTranslationActive = false;
   let isPageTranslationPaused = false;
   let pageTranslationAbortController = null;
@@ -195,16 +196,9 @@
     });
   }
 
-  let popoverFocusTimers = [];
-
-  function clearPopoverFocusTimers() {
-    popoverFocusTimers.forEach(id => clearTimeout(id));
-    popoverFocusTimers = [];
-  }
-
   function openIframePopover(selectionData) {
     const text = selectionData.text;
-    const rect = selectionData.rect || { top: 120, bottom: 160, left: window.innerWidth / 2 - 150, width: 300, height: 40 };
+    const rect = selectionData.rect || { top: 120, bottom: 160, left: window.innerWidth / 2 - 200, width: 400, height: 40 };
 
     popoverCardEl = document.createElement('iframe');
     popoverCardEl.className = 'plamo-ext-popover-iframe';
@@ -218,18 +212,19 @@
     };
     popoverCardEl.src = chrome.runtime.getURL('popover.html') + '#' + encodeURIComponent(JSON.stringify(payload));
 
-    // Position initial slim indicator near selection
+    // Position Card near selection
     let cardTop = window.scrollY + rect.bottom + 8;
     let cardLeft = window.scrollX + rect.left;
 
-    // Check bottom overflow (indicator is ~44px initial)
-    const initialHeight = 44;
-    if (rect.bottom + initialHeight > window.innerHeight && rect.top > initialHeight) {
-      cardTop = window.scrollY + rect.top - initialHeight - 8;
+    // Check bottom overflow
+    const estimatedHeight = 180;
+    if (rect.bottom + estimatedHeight > window.innerHeight && rect.top > estimatedHeight) {
+      cardTop = window.scrollY + rect.top - estimatedHeight - 8;
     }
 
-    // Check right overflow & clamp to viewport (initial width is ~300px)
-    const cardWidth = 300;
+    // Check right overflow & clamp to viewport
+    const cardWidth = Math.max(300, Math.min(window.innerWidth - 30, currentSettings.popoverCustomWidth || 400));
+    const customHeight = currentSettings.popoverCustomHeight ? Math.max(140, Math.min(window.innerHeight - 30, currentSettings.popoverCustomHeight)) : 0;
     const maxLeft = window.scrollX + window.innerWidth - cardWidth - 16;
     if (cardLeft > maxLeft) {
       cardLeft = maxLeft;
@@ -240,81 +235,83 @@
 
     popoverCardEl.style.top = `${cardTop}px`;
     popoverCardEl.style.left = `${cardLeft}px`;
+    popoverCardEl.style.width = `${cardWidth}px`;
+    if (customHeight > 0) {
+      popoverCardEl.style.height = `${customHeight}px`;
+    }
 
     // Prevent selection events inside card from bubbling
     popoverCardEl.addEventListener('mousedown', (e) => e.stopPropagation());
 
-    // Focus iframe helper to guarantee Chromium treats extension process as foreground
-    const focusIframe = () => {
-      try {
-        if (popoverCardEl) {
-          popoverCardEl.focus();
-          if (popoverCardEl.contentWindow) {
-            popoverCardEl.contentWindow.focus();
-          }
-        }
-      } catch {}
-    };
-
+    // Auto-focus the iframe on load to promote extension process to foreground in Chromium (Approach C)
     popoverCardEl.addEventListener('load', () => {
-      focusIframe();
+      try {
+        popoverCardEl.focus();
+      } catch {}
     });
 
     document.body.appendChild(popoverCardEl);
-    focusIframe();
-
-    // Multi-stage focus acquisition to overcome Chromium subframe focus lag
-    clearPopoverFocusTimers();
-    popoverFocusTimers.push(setTimeout(focusIframe, 50));
-    popoverFocusTimers.push(setTimeout(focusIframe, 150));
-    popoverFocusTimers.push(setTimeout(focusIframe, 350));
+    try {
+      popoverCardEl.focus();
+    } catch {}
   }
 
   function removePopoverCard() {
-    clearPopoverFocusTimers();
     if (popoverCardEl) {
       removeElement(popoverCardEl);
       popoverCardEl = null;
     }
+    userHasMovedPopover = false;
   }
 
   // Listen for messages from popover.html iframe
   window.addEventListener('message', (e) => {
     if (!e.data || typeof e.data !== 'object') return;
     if (e.data.type === 'PLAMO_RESIZE') {
-      if (popoverCardEl) {
-        if (typeof e.data.width === 'number') {
-          popoverCardEl.style.width = `${e.data.width}px`;
-        }
-        if (typeof e.data.height === 'number') {
-          const newHeight = e.data.height;
-          popoverCardEl.style.height = `${newHeight}px`;
+      if (popoverCardEl && typeof e.data.height === 'number') {
+        const newHeight = e.data.height;
+        popoverCardEl.style.height = `${newHeight}px`;
 
-          if (newHeight > 60) {
-            popoverCardEl.classList.add('is-expanded');
-          } else {
-            popoverCardEl.classList.remove('is-expanded');
-          }
-
-          // Adjust top position if height expansion overflows the bottom of viewport
-          if (lastSelectionData && lastSelectionData.rect) {
-            const rect = lastSelectionData.rect;
-            const currentTop = parseFloat(popoverCardEl.style.top) || 0;
-            if (rect.top > newHeight && (currentTop + newHeight > window.scrollY + window.innerHeight - 10)) {
-              popoverCardEl.style.top = `${Math.max(window.scrollY + 10, window.scrollY + rect.top - newHeight - 8)}px`;
-            }
+        // Adjust top position if height expansion overflows the bottom of viewport (only if user hasn't manually moved it)
+        if (!userHasMovedPopover && lastSelectionData && lastSelectionData.rect) {
+          const rect = lastSelectionData.rect;
+          const currentTop = parseFloat(popoverCardEl.style.top) || 0;
+          if (rect.top > newHeight && (currentTop + newHeight > window.scrollY + window.innerHeight - 10)) {
+            popoverCardEl.style.top = `${Math.max(window.scrollY + 10, window.scrollY + rect.top - newHeight - 8)}px`;
           }
         }
       }
-    } else if (e.data.type === 'PLAMO_REQUEST_FOCUS') {
-      try {
-        if (popoverCardEl) {
-          popoverCardEl.focus();
-          if (popoverCardEl.contentWindow) {
-            popoverCardEl.contentWindow.focus();
-          }
+    } else if (e.data.type === 'PLAMO_USER_MOVE') {
+      if (popoverCardEl && typeof e.data.deltaX === 'number' && typeof e.data.deltaY === 'number') {
+        userHasMovedPopover = true;
+        const currentLeft = parseFloat(popoverCardEl.style.left) || 0;
+        const currentTop = parseFloat(popoverCardEl.style.top) || 0;
+
+        const newLeft = currentLeft + e.data.deltaX;
+        const newTop = currentTop + e.data.deltaY;
+
+        // Viewport boundaries: keep at least 60px visible horizontally, 40px vertically
+        const minLeft = window.scrollX + 10;
+        const maxLeft = window.scrollX + window.innerWidth - 60;
+        const minTop = window.scrollY + 10;
+        const maxTop = window.scrollY + window.innerHeight - 40;
+
+        popoverCardEl.style.left = `${Math.max(minLeft, Math.min(maxLeft, newLeft))}px`;
+        popoverCardEl.style.top = `${Math.max(minTop, Math.min(maxTop, newTop))}px`;
+      }
+    } else if (e.data.type === 'PLAMO_USER_RESIZE') {
+      if (popoverCardEl) {
+        if (typeof e.data.width === 'number') {
+          const clampedWidth = Math.max(300, Math.min(window.innerWidth - 20, e.data.width));
+          popoverCardEl.style.width = `${clampedWidth}px`;
+          currentSettings.popoverCustomWidth = clampedWidth;
         }
-      } catch {}
+        if (typeof e.data.height === 'number') {
+          const clampedHeight = Math.max(140, Math.min(window.innerHeight - 20, e.data.height));
+          popoverCardEl.style.height = `${clampedHeight}px`;
+          currentSettings.popoverCustomHeight = clampedHeight;
+        }
+      }
     } else if (e.data.type === 'PLAMO_REPLACE_TEXT') {
       if (lastSelectionData && e.data.text) {
         handleTextReplacement(lastSelectionData, e.data.text);
@@ -386,22 +383,103 @@
   });
 
   // -------------------------------------------------------------
-  // Whole-Page Translation
+  // Whole-Page Translation - Smart Content Extractor
   // -------------------------------------------------------------
+
+  /**
+   * Locate the primary content container (article, main, markdown body, etc.)
+   * Falls back to document.body if no explicit container is found.
+   */
+  function findMainContentRoot() {
+    const primarySelectors = [
+      'article',
+      'main',
+      '[role="main"]',
+      '.article-body',
+      '.article-content',
+      '.entry-content',
+      '.post-content',
+      '.post-body',
+      '.markdown-body',
+      '#content',
+      '#main-content',
+      '.main-content'
+    ];
+
+    for (const sel of primarySelectors) {
+      const candidates = document.querySelectorAll(sel);
+      for (const el of candidates) {
+        // Ensure container has substantial text (> 120 chars) and is visible
+        if (el.innerText && el.innerText.trim().length > 120) {
+          const style = window.getComputedStyle(el);
+          if (style.display !== 'none' && style.visibility !== 'hidden') {
+            return el;
+          }
+        }
+      }
+    }
+
+    return document.body;
+  }
+
   function findTranslatableElements() {
+    const root = findMainContentRoot();
     const selector = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, td, figcaption';
-    const all = Array.from(document.querySelectorAll(selector));
+    const all = Array.from(root.querySelectorAll(selector));
+
+    const targetLang = currentSettings.targetLang || 'ja';
+    const isTargetJapanese = targetLang === 'ja' || targetLang === 'ja-easy';
+
+    // Comprehensive blacklist selector to filter out navigation, widgets, ads and sidebars
+    const noiseSelector = [
+      'header',
+      'nav',
+      'footer',
+      'aside',
+      'script',
+      'style',
+      'code',
+      'pre',
+      'noscript',
+      '[contenteditable="true"]',
+      '[role="navigation"]',
+      '[role="complementary"]',
+      '[role="banner"]',
+      '[aria-hidden="true"]',
+      '.sidebar',
+      '#sidebar',
+      '.comments',
+      '#comments',
+      '.comment-list',
+      '.ad',
+      '.advertisement',
+      '.ad-container',
+      '.social-share',
+      '.share-buttons',
+      '.breadcrumb',
+      '.breadcrumbs',
+      '.pagination',
+      '.toc',
+      '.table-of-contents',
+      '.related-posts',
+      '.recommended',
+      '.cookie-banner',
+      '.modal',
+      '.dialog'
+    ].join(', ');
 
     return all.filter(el => {
-      // Ignore elements inside unwanted containers
-      if (el.closest('header, nav, footer, script, style, code, pre, noscript, [contenteditable="true"]')) {
+      // 1. Ignore elements inside noise containers
+      if (el.closest(noiseSelector)) {
         return false;
       }
-      // Ignore elements inside extension UI
-      if (el.closest('.plamo-ext-popover-card, .plamo-ext-floating-trigger, .plamo-ext-page-bar, .plamo-ext-inline-translation')) {
+
+      // 2. Ignore elements inside extension UI
+      if (el.closest('.plamo-ext-popover-card, .plamo-ext-floating-trigger, .plamo-ext-page-bar, .plamo-ext-inline-translation, .plamo-ext-popover-iframe')) {
         return false;
       }
-      // Ignore if already marked or has next sibling translation block
+
+      // 3. Ignore if already marked or already has inline translation block
       if (el.getAttribute('data-plamo-origin') === 'true') {
         return false;
       }
@@ -410,12 +488,31 @@
         return false;
       }
 
-      // Check text content length & visibility
+      // 4. Check text content length & visibility
       const text = el.innerText ? el.innerText.trim() : '';
-      if (text.length < 10) return false;
-      // Skip if mostly numbers or symbols
-      if (/^[\d\s\p{P}]+$/u.test(text)) return false;
+      if (text.length < 15) return false;
 
+      // 5. Skip if mostly numbers or symbols
+      if (/^[\d\s\p{P}+<=>~^$]+$/u.test(text)) return false;
+
+      // 6. Link Density check: if >50% of the text is inside <a> tags, it is a navigation/menu list
+      const anchorLinks = el.querySelectorAll('a');
+      if (anchorLinks.length > 0) {
+        let linkCharCount = 0;
+        anchorLinks.forEach(a => {
+          linkCharCount += (a.innerText || '').trim().length;
+        });
+        if (linkCharCount / text.length >= 0.5) {
+          return false;
+        }
+      }
+
+      // 7. Skip already-translated language (e.g. Japanese text when target is Japanese)
+      if (isTargetJapanese && typeof isJapaneseText === 'function' && isJapaneseText(text)) {
+        return false;
+      }
+
+      // 8. Visibility check
       const style = window.getComputedStyle(el);
       if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
         return false;

@@ -104,7 +104,7 @@
       labelSelectionMode: 'Webページ内での選択テキスト翻訳',
       optSelectionModeButton: 'アイコンボタンを表示 (クリックで翻訳カードを開く)',
       optSelectionModeInstant: '選択時に即座に翻訳カードを開く',
-      optSelectionModeOff: '無効 (右クリックメニューまたはポップアップから翻訳)',
+      optSelectionModeOff: '無効 (右クリックメニューまたはサイドバーから翻訳)',
 
       labelInlineDisplayMode: 'インライン翻訳の表示形式',
       optInlineModeWindow: 'フロート小窓 (P-core最速 / 推奨)',
@@ -244,7 +244,7 @@
       labelSelectionMode: 'In-Page Selection Translation',
       optSelectionModeButton: 'Show floating icon button (Click to translate)',
       optSelectionModeInstant: 'Open translation card immediately on selection',
-      optSelectionModeOff: 'Disabled (Use right-click menu or popup)',
+      optSelectionModeOff: 'Disabled (Use right-click menu or side panel)',
 
       labelInlineDisplayMode: 'Inline Translation Display Style',
       optInlineModeWindow: 'Floating Window (P-core Fastest / Recommended)',
