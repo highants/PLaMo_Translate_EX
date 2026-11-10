@@ -25,7 +25,8 @@ const PLAMO_LANGUAGES = [
   { code: 'ja', name: '日本語', enName: 'Japanese' },
   { code: 'ja-easy', name: 'やさしい日本語', enName: 'Japanese (Easy)' },
   { code: 'en', name: '英語', enName: 'English' },
-  { code: 'zh', name: '中国語', enName: 'Chinese' },
+  { code: 'zh-hans', name: '中国語（簡体字）', enName: 'Chinese (Simplified)' },
+  { code: 'zh-hant', name: '中国語（繁体字）', enName: 'Chinese (Traditional)' },
   { code: 'ko', name: '韓国語', enName: 'Korean' },
   { code: 'fr', name: 'フランス語', enName: 'French' },
   { code: 'de', name: 'ドイツ語', enName: 'German' },
@@ -134,7 +135,7 @@ const DEFAULT_SETTINGS = {
   maxTokens: 1024,
   selectionMode: 'button', // 'button' | 'instant' | 'off'
   inlineDisplayMode: 'window', // 'window' (Native Float Window, Fastest & Immune to EcoQoS) | 'iframe' (In-page OOPIF)
-  popoverCustomWidth: 400,
+  popoverCustomWidth: 440,
   popoverCustomHeight: 0
 };
 

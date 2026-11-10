@@ -223,7 +223,7 @@
     }
 
     // Check right overflow & clamp to viewport
-    const cardWidth = Math.max(300, Math.min(window.innerWidth - 30, currentSettings.popoverCustomWidth || 400));
+    const cardWidth = Math.max(300, Math.min(window.innerWidth - 30, currentSettings.popoverCustomWidth || 440));
     const customHeight = currentSettings.popoverCustomHeight ? Math.max(140, Math.min(window.innerHeight - 30, currentSettings.popoverCustomHeight)) : 0;
     const maxLeft = window.scrollX + window.innerWidth - cardWidth - 16;
     if (cardLeft > maxLeft) {

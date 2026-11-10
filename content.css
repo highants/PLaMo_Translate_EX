@@ -64,7 +64,7 @@
 .plamo-ext-popover-iframe {
   position: absolute;
   z-index: 2147483645;
-  width: 400px;
+  width: 440px;
   min-width: 300px;
   max-width: calc(100vw - 20px);
   height: 180px;
@@ -83,7 +83,7 @@
 .plamo-ext-popover-card {
   position: absolute;
   z-index: 2147483645;
-  width: 400px;
+  width: 440px;
   max-width: calc(100vw - 20px);
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -158,11 +158,13 @@
 }
 
 .plamo-ext-card-target-lang {
-  max-width: 140px;
+  width: auto;
+  max-width: 250px;
 }
 
 .plamo-ext-card-form {
-  max-width: 95px;
+  width: auto;
+  max-width: 130px;
 }
 
 @media (prefers-color-scheme: dark) {
