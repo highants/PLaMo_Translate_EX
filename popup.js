@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const btnGrabSelection = document.getElementById('btnGrabSelection');
   const btnPageTranslate = document.getElementById('btnPageTranslate');
+  const btnAreaOcrTranslate = document.getElementById('btnAreaOcrTranslate');
   const btnModeLmStudio = document.getElementById('btnModeLmStudio');
   const btnModeWllama = document.getElementById('btnModeWllama');
 
@@ -66,6 +67,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const wllamaStatusText = document.getElementById('wllamaStatusText');
   const settingSelectionMode = document.getElementById('settingSelectionMode');
   const settingInlineDisplayMode = document.getElementById('settingInlineDisplayMode');
+  const settingImageHoverBtn = document.getElementById('settingImageHoverBtn');
+  const settingOcrEngine = document.getElementById('settingOcrEngine');
   const settingAutoSwitchJaEn = document.getElementById('settingAutoSwitchJaEn');
   const settingTemperature = document.getElementById('settingTemperature');
   const settingMaxTokens = document.getElementById('settingMaxTokens');
@@ -155,8 +158,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   function applyEngineModeVisibility(mode) {
     const isWllama = mode === 'wllama';
     if (settingEngineMode) settingEngineMode.value = isWllama ? 'wllama' : 'lmstudio';
-    if (btnModeLmStudio) btnModeLmStudio.classList.toggle('active', !isWllama);
-    if (btnModeWllama) btnModeWllama.classList.toggle('active', isWllama);
+    if (btnModeLmStudio) {
+      btnModeLmStudio.classList.toggle('active', !isWllama);
+      btnModeLmStudio.setAttribute('aria-pressed', String(!isWllama));
+    }
+    if (btnModeWllama) {
+      btnModeWllama.classList.toggle('active', isWllama);
+      btnModeWllama.setAttribute('aria-pressed', String(isWllama));
+    }
     if (lmStudioSettingsGroup) lmStudioSettingsGroup.style.display = isWllama ? 'none' : 'flex';
     if (wllamaSettingsGroup) wllamaSettingsGroup.style.display = isWllama ? 'flex' : 'none';
   }
@@ -239,6 +248,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingSelectionMode.value = currentSettings.selectionMode || 'button';
     if (settingInlineDisplayMode) {
       settingInlineDisplayMode.value = currentSettings.inlineDisplayMode || 'window';
+    }
+    if (settingImageHoverBtn) {
+      settingImageHoverBtn.checked = currentSettings.enableImageHoverButton !== false;
+    }
+    if (settingOcrEngine) {
+      settingOcrEngine.value = currentSettings.ocrEngine || 'ndlocr';
     }
     settingAutoSwitchJaEn.checked = !!currentSettings.autoSwitchJaEn;
     settingTemperature.value = currentSettings.temperature !== undefined ? currentSettings.temperature : 0;
@@ -589,17 +604,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Settings Panel Toggle
+  // Area OCR Drag Selection Translation (keep sidebar open so user can manage OCR flow)
+  if (btnAreaOcrTranslate) {
+    btnAreaOcrTranslate.addEventListener('click', async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab || !tab.id) return;
+
+        await chrome.tabs.sendMessage(tab.id, { type: 'START_AREA_OCR_TRANSLATION' });
+      } catch (err) {
+        alert(`${currentUiLang === 'en' ? 'Could not start area OCR translation' : '範囲選択OCR翻訳を開始できませんでした'}: ${err.message}\n(May be restricted on chrome:// URLs)`);
+      }
+    });
+  }
+
+  // Settings Panel Toggle (displays at top below header)
   btnToggleSettings.addEventListener('click', () => {
     const isHidden = settingsPanel.style.display === 'none';
     settingsPanel.style.display = isHidden ? 'block' : 'none';
+    btnToggleSettings.setAttribute('aria-expanded', String(isHidden));
     if (isHidden) {
-      settingsPanel.scrollIntoView({ behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   });
 
   btnCloseSettings.addEventListener('click', () => {
     settingsPanel.style.display = 'none';
+    btnToggleSettings.setAttribute('aria-expanded', 'false');
   });
 
   btnTestConnection.addEventListener('click', () => checkConnection(false));
@@ -717,6 +748,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       wllamaUseWebGpu: chosenWllamaWebGpu,
       selectionMode: settingSelectionMode.value,
       inlineDisplayMode: settingInlineDisplayMode ? settingInlineDisplayMode.value : 'window',
+      enableImageHoverButton: settingImageHoverBtn ? settingImageHoverBtn.checked : true,
+      ocrEngine: settingOcrEngine ? settingOcrEngine.value : (currentSettings.ocrEngine || 'ndlocr'),
       autoSwitchJaEn: settingAutoSwitchJaEn.checked,
       temperature: parseFloat(settingTemperature.value) || 0,
       maxTokens: parseInt(settingMaxTokens.value, 10) || 1024,
@@ -756,7 +789,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateCharCount();
         performTranslation();
       }
-    } catch {}
+    } catch { }
   }
 
   chrome.runtime.onMessage.addListener((message) => {

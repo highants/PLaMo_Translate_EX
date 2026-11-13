@@ -12,35 +12,221 @@
   <div class="app-container">
     <!-- Top Header -->
     <header class="app-header">
-      <div class="brand">
-        <img src="icons/icon48.png" alt="PLaMo" class="brand-icon">
-        <div class="brand-text">
-          <span class="brand-title" data-i18n="brandTitle">PLaMo Translate</span>
-          <span class="brand-subtitle" data-i18n="brandSubtitle">pfnet/plamo-3-translate</span>
+      <div class="header-top-row">
+        <div class="brand">
+          <img src="icons/icon48.png" alt="PLaMo" class="brand-icon">
+          <div class="brand-text">
+            <span class="brand-title" data-i18n="brandTitle">PLaMo Translate</span>
+            <span class="brand-subtitle" data-i18n="brandSubtitle">pfnet/plamo-3-translate</span>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <button type="button" id="btnOpenTab" class="icon-button" data-i18n-title="btnOpenTab" title="タブで全画面表示">🗗</button>
+          <button type="button" id="btnToggleSettings" class="icon-button" data-i18n-title="btnToggleSettings" title="設定を開く" aria-expanded="false">⚙️</button>
         </div>
       </div>
 
-      <div class="header-status">
-        <span id="connectionDot" class="status-dot disconnected" title="LM Studio 接続ステータス"></span>
-        <span id="connectionStatus" class="status-text" data-i18n="statusDisconnected">未接続</span>
-      </div>
+      <div class="header-engine-row">
+        <div class="engine-mode-pills" role="group" aria-label="Inference Engine Mode">
+          <button type="button" id="btnModeLmStudio" class="mode-pill active" data-mode="lmstudio" data-i18n="modeSwitchLmStudio"
+            aria-pressed="true" title="Mode A: LM Studio">🖥️ LM Studio</button>
+          <button type="button" id="btnModeWllama" class="mode-pill" data-mode="wllama" data-i18n="modeSwitchWllama"
+            aria-pressed="false" title="Mode B: In-Browser Wllama 0.8B">🌐 ブラウザ内蔵</button>
+        </div>
 
-      <div class="header-actions">
-        <button id="btnOpenTab" class="icon-button" data-i18n-title="btnOpenTab" title="タブで全画面表示">🗗</button>
-        <button id="btnToggleSettings" class="icon-button" data-i18n-title="btnToggleSettings" title="設定を開く">⚙️</button>
+        <div class="header-status">
+          <span id="connectionDot" class="status-dot disconnected" title="LM Studio 接続ステータス"></span>
+          <span id="connectionStatus" class="status-text" data-i18n="statusDisconnected">未接続</span>
+        </div>
       </div>
     </header>
 
+    <!-- Collapsible Settings Panel -->
+    <section id="settingsPanel" class="settings-panel" style="display: none;">
+      <div class="settings-header">
+        <h2 class="settings-title" data-i18n="settingsTitle">⚙️ 拡張機能設定</h2>
+        <button type="button" id="btnCloseSettings" class="icon-button" data-i18n-title="btnCloseSettings" title="設定を閉じる">×</button>
+      </div>
+
+      <div class="settings-content">
+        <!-- UI Language Selection -->
+        <div class="setting-item">
+          <label for="settingUiLang" data-i18n="labelUiLang">UI 言語 (Interface Language)</label>
+          <select id="settingUiLang" class="select-input">
+            <option value="auto" data-i18n="optUiLangAuto">自動 (ブラウザ依存 / Auto)</option>
+            <option value="ja" data-i18n="optUiLangJa">日本語 (Japanese)</option>
+            <option value="en" data-i18n="optUiLangEn">English (英語)</option>
+          </select>
+          <span class="setting-desc" data-i18n="descUiLang">ポップアップや画面内翻訳カードの表示言語を切り替えます</span>
+        </div>
+
+        <!-- Inference Engine Mode (Mode A vs Mode B) -->
+        <div class="setting-item">
+          <label for="settingEngineMode" data-i18n="labelEngineMode">推論エンジン (Inference Mode)</label>
+          <select id="settingEngineMode" class="select-input">
+            <option value="lmstudio" data-i18n="optEngineLmStudio">モードA: LM Studio ローカルサーバー</option>
+            <option value="wllama" data-i18n="optEngineWllama">モードB: ブラウザ内蔵 Wllama 0.8B (Offscreen)</option>
+          </select>
+          <span class="setting-desc" data-i18n="descEngineMode">LM Studio サーバー経由か、ブラウザ単体 (Wllama WebGPU/WASM)
+            で推論するかを切り替えます</span>
+        </div>
+
+        <!-- Mode A: LM Studio Settings Group -->
+        <div id="lmStudioSettingsGroup" class="engine-settings-group">
+          <!-- LM Studio Server URL -->
+          <div class="setting-item">
+            <label for="settingBaseUrl" data-i18n="labelBaseUrl">LM Studio サーバー URL</label>
+            <div class="input-with-button">
+              <input type="text" id="settingBaseUrl" value="http://localhost:1234" class="text-input">
+              <button type="button" id="btnTestConnection" class="btn-secondary" data-i18n="btnTestConnection">🔌 接続テスト</button>
+            </div>
+            <span class="setting-desc" data-i18n="descBaseUrl">LM Studio の Local Server (デフォルトポート 1234)</span>
+          </div>
+
+          <!-- Model Selection -->
+          <div class="setting-item">
+            <label for="settingModel" data-i18n="labelModel">使用モデル</label>
+            <select id="settingModel" class="select-input">
+              <option value="" data-i18n="optModelAuto">(ロード済みモデルを自動検出)</option>
+            </select>
+            <input type="text" id="settingModelCustom" data-i18n-placeholder="placeholderModelCustom"
+              placeholder="モデル識別名を手動入力..." class="text-input" style="margin-top: 6px; display: none;">
+            <span class="setting-desc" data-i18n="descModel">LM Studio にロードされているモデルを選択または手動指定</span>
+          </div>
+
+          <!-- API Mode -->
+          <div class="setting-item">
+            <label for="settingApiMode" data-i18n="labelApiMode">API 呼び出しモード</label>
+            <select id="settingApiMode" class="select-input">
+              <option value="completions" data-i18n="optApiModeCompletions">Completions API (/v1/completions) - PFML3推奨
+              </option>
+              <option value="chat" data-i18n="optApiModeChat">Chat API (/v1/chat/completions)</option>
+            </select>
+            <span class="setting-desc" data-i18n="descApiMode">PLaMo 3 Translate は PFML3 形式の Completions
+              呼び出しで最も高い精度を発揮します</span>
+          </div>
+        </div>
+
+        <!-- Mode B: In-Browser Wllama Settings Group -->
+        <div id="wllamaSettingsGroup" class="engine-settings-group" style="display: none;">
+          <div class="setting-item">
+            <label for="settingWllamaModel" data-i18n="labelWllamaModel">ブラウザ内蔵モデル (PLaMo 3 Translate 0.8B GGUF)</label>
+            <select id="settingWllamaModel" class="select-input"></select>
+            <input type="text" id="settingWllamaModelCustom" data-i18n-placeholder="placeholderWllamaUrl"
+              placeholder="GGUF モデルの直リンク URL を入力..." class="text-input" style="margin-top: 6px; display: none;">
+            <span class="setting-desc" data-i18n="descWllamaModel">初回のみ Hugging Face からダウンロードされ、ブラウザの OPFS
+              にキャッシュされます</span>
+          </div>
+
+          <div class="setting-item">
+            <label class="checkbox-label">
+              <input type="checkbox" id="settingWllamaWebGpu" checked>
+              <span data-i18n="labelWllamaWebGpu">WebGPU ハードウェアアクセラレーションを有効化 (推奨)</span>
+            </label>
+            <span class="setting-desc" data-i18n="descWllamaWebGpu">非対応環境または初期化失敗時は自動的に WASM (CPU) へフォールバックします</span>
+          </div>
+
+          <div class="wllama-control-box">
+            <div class="wllama-btn-row">
+              <button type="button" id="btnWllamaLoad" class="btn-secondary" data-i18n="btnWllamaLoad">📥 モデルをロード /
+                DL</button>
+              <button type="button" id="btnWllamaUnload" class="btn-secondary" data-i18n="btnWllamaUnload">⏹
+                メモリ解放</button>
+              <button type="button" id="btnWllamaClearCache" class="btn-secondary" data-i18n="btnWllamaClearCache">🗑
+                キャッシュ削除</button>
+            </div>
+            <div id="wllamaProgressWrap" class="wllama-progress-wrap" style="display: none;">
+              <div id="wllamaProgressBar" class="wllama-progress-bar" style="width: 0%;"></div>
+            </div>
+            <div id="wllamaStatusText" class="wllama-status-text" data-i18n="wllamaStatusIdle">未ロード（翻訳時または上のボタンでロードされます）
+            </div>
+          </div>
+        </div>
+
+        <!-- In-Page Selection Popup Mode -->
+        <div id="inlineSettingsContainer">
+          <div class="setting-item">
+            <label for="settingSelectionMode" data-i18n="labelSelectionMode">Webページ内での選択テキスト翻訳</label>
+            <select id="settingSelectionMode" class="select-input">
+              <option value="button" data-i18n="optSelectionModeButton">アイコンボタンを表示 (クリックで翻訳カードを開く)</option>
+              <option value="instant" data-i18n="optSelectionModeInstant">選択時に即座に翻訳カードを開く</option>
+              <option value="off" data-i18n="optSelectionModeOff">無効 (右クリックメニューまたはサイドバーから翻訳)</option>
+            </select>
+          </div>
+
+          <!-- In-Page Translation Display Style (Window vs Iframe) -->
+          <div class="setting-item">
+            <label for="settingInlineDisplayMode" data-i18n="labelInlineDisplayMode">インライン翻訳の表示形式</label>
+            <select id="settingInlineDisplayMode" class="select-input">
+              <option value="window" data-i18n="optInlineModeWindow">フロート小窓 (P-core最速 / 推奨)</option>
+              <option value="iframe" data-i18n="optInlineModeIframe">ページ内カード (iframe)</option>
+            </select>
+            <span class="setting-desc"
+              data-i18n="descInlineDisplayMode">デスクトップ小窓にすることでWindowsの効率モード(EcoQoS)を回避し、メイン窓と同じ最高速で推論します</span>
+          </div>
+
+          <!-- Image Hover OCR Button -->
+          <div class="setting-item">
+            <label class="checkbox-label">
+              <input type="checkbox" id="settingImageHoverBtn" checked>
+              <span data-i18n="labelImageHoverBtn">画像にマウスを乗せた時に「🖼️ 画像翻訳」ボタンを表示する</span>
+            </label>
+          </div>
+
+          <!-- OCR Engine Selector -->
+          <div class="setting-item">
+            <label for="settingOcrEngine" data-i18n="labelOcrEngine">画像翻訳のOCRエンジン</label>
+            <select id="settingOcrEngine" class="select-input">
+              <option value="ndlocr" data-i18n="ocrEngineNdl">NDLOCR-Lite (国立国会図書館・日本語高精度 / 推奨)</option>
+              <option value="tesseract" data-i18n="ocrEngineTesseract">Tesseract.js (軽量・英語向け)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Auto Ja/En switch -->
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="settingAutoSwitchJaEn" checked>
+            <span data-i18n="labelAutoSwitchJaEn">日本語を入力した時は自動的に英語へ翻訳する</span>
+          </label>
+          <span class="setting-desc" data-i18n="descAutoSwitchJaEn">翻訳先が「日本語」の状態で日本語を入力した場合、自動で英語に反転します</span>
+        </div>
+
+        <!-- Temperature & Max Tokens -->
+        <div class="setting-row">
+          <div class="setting-col">
+            <label for="settingTemperature" data-i18n="labelTemperature">Temperature (温度)</label>
+            <input type="number" id="settingTemperature" min="0" max="1" step="0.1" value="0" class="text-input">
+            <span class="setting-desc" data-i18n="descTemperature">0: 最も確定的・一貫</span>
+          </div>
+          <div class="setting-col">
+            <label for="settingMaxTokens" data-i18n="labelMaxTokens">Max Tokens</label>
+            <input type="number" id="settingMaxTokens" min="64" max="8192" step="64" value="1024" class="text-input">
+            <span class="setting-desc" data-i18n="descMaxTokens">最大生成トークン数</span>
+          </div>
+        </div>
+
+        <!-- Save Button & Feedback -->
+        <div class="settings-actions">
+          <button type="button" id="btnSaveSettings" class="btn-primary" data-i18n="btnSaveSettings">設定を保存</button>
+          <span id="settingsSaveStatus" class="save-status" data-i18n="saveStatusSuccess" style="display: none;">✓
+            保存しました</span>
+        </div>
+      </div>
+    </section>
+
     <!-- Quick Tools Bar -->
     <section class="quick-tools-bar">
-      <div class="engine-mode-pills" role="group" aria-label="Inference Engine Mode">
-        <button id="btnModeLmStudio" class="mode-pill active" data-mode="lmstudio" data-i18n="modeSwitchLmStudio" title="Mode A: LM Studio">🖥️ LM Studio</button>
-        <button id="btnModeWllama" class="mode-pill" data-mode="wllama" data-i18n="modeSwitchWllama" title="Mode B: In-Browser Wllama 0.8B">🌐 ブラウザ内蔵</button>
-      </div>
-      <button id="btnGrabSelection" class="btn-tool" data-i18n-title="btnGrabSelectionTitle" title="閲覧中タブの選択テキストを取得して翻訳">
+      <button type="button" id="btnGrabSelection" class="btn-tool btn-tool-selection" data-i18n-title="btnGrabSelectionTitle"
+        title="閲覧中タブの選択テキストを取得して翻訳">
         <span>📥</span> <span data-i18n="btnGrabSelection">選択テキスト</span>
       </button>
-      <button id="btnPageTranslate" class="btn-tool" data-i18n-title="btnPageTranslateTitle" title="閲覧中タブのWebページ全体を翻訳">
+      <button type="button" id="btnAreaOcrTranslate" class="btn-tool btn-tool-ocr" data-i18n-title="btnAreaOcrTranslateTitle"
+        title="ページ上の画像や図表をドラッグ選択してオーバースクリーン翻訳">
+        <span data-i18n="btnAreaOcrTranslate">📷 範囲選択OCR翻訳</span>
+      </button>
+      <button type="button" id="btnPageTranslate" class="btn-tool btn-tool-page" data-i18n-title="btnPageTranslateTitle" title="閲覧中タブのWebページ全体を翻訳">
         <span>🌐</span> <span data-i18n="btnPageTranslate">ページ全体翻訳</span>
       </button>
     </section>
@@ -86,8 +272,8 @@
           </div>
         </div>
         <div class="card-body">
-          <textarea id="inputText" class="translation-textarea" data-i18n-placeholder="inputPlaceholder" placeholder="翻訳したいテキストを入力... (Ctrl + Enter で翻訳)"
-            rows="5"></textarea>
+          <textarea id="inputText" class="translation-textarea" data-i18n-placeholder="inputPlaceholder"
+            placeholder="翻訳したいテキストを入力... (Ctrl + Enter で翻訳)" rows="5"></textarea>
         </div>
         <div class="card-footer">
           <!-- Collapsible Context & Glossary -->
@@ -96,12 +282,14 @@
             <div class="details-body">
               <div class="field-group">
                 <label for="contextInput" data-i18n="labelContext">コンテキスト (Context)</label>
-                <input type="text" id="contextInput" data-i18n-placeholder="placeholderContext" placeholder="例: ソフトウェア開発の技術ドキュメント" class="text-input">
+                <input type="text" id="contextInput" data-i18n-placeholder="placeholderContext"
+                  placeholder="例: ソフトウェア開発の技術ドキュメント" class="text-input">
               </div>
               <div class="field-group">
                 <label for="glossaryInput" data-i18n="labelGlossary">用語集 (Glossary - 1行に1組: 原文=訳語)</label>
-                <textarea id="glossaryInput" data-i18n-placeholder="placeholderGlossary" placeholder="例:&#10;LLM=大規模言語モデル&#10;Prompt=プロンプト&#10;repository=リポジトリ"
-                  rows="3" class="text-input font-mono"></textarea>
+                <textarea id="glossaryInput" data-i18n-placeholder="placeholderGlossary"
+                  placeholder="例:&#10;LLM=大規模言語モデル&#10;Prompt=プロンプト&#10;repository=リポジトリ" rows="3"
+                  class="text-input font-mono"></textarea>
               </div>
             </div>
           </details>
@@ -157,157 +345,10 @@
       </div>
     </main>
 
-    <!-- Collapsible Settings Panel -->
-    <section id="settingsPanel" class="settings-panel" style="display: none;">
-      <div class="settings-header">
-        <h2 class="settings-title" data-i18n="settingsTitle">⚙️ 拡張機能設定</h2>
-        <button id="btnCloseSettings" class="icon-button" data-i18n-title="btnCloseSettings" title="設定を閉じる">×</button>
-      </div>
-
-      <div class="settings-content">
-        <!-- UI Language Selection -->
-        <div class="setting-item">
-          <label for="settingUiLang" data-i18n="labelUiLang">UI 言語 (Interface Language)</label>
-          <select id="settingUiLang" class="select-input">
-            <option value="auto" data-i18n="optUiLangAuto">自動 (ブラウザ依存 / Auto)</option>
-            <option value="ja" data-i18n="optUiLangJa">日本語 (Japanese)</option>
-            <option value="en" data-i18n="optUiLangEn">English (英語)</option>
-          </select>
-          <span class="setting-desc" data-i18n="descUiLang">ポップアップや画面内翻訳カードの表示言語を切り替えます</span>
-        </div>
-
-        <!-- Inference Engine Mode (Mode A vs Mode B) -->
-        <div class="setting-item">
-          <label for="settingEngineMode" data-i18n="labelEngineMode">推論エンジン (Inference Mode)</label>
-          <select id="settingEngineMode" class="select-input">
-            <option value="lmstudio" data-i18n="optEngineLmStudio">モードA: LM Studio ローカルサーバー</option>
-            <option value="wllama" data-i18n="optEngineWllama">モードB: ブラウザ内蔵 Wllama 0.8B (Offscreen)</option>
-          </select>
-          <span class="setting-desc" data-i18n="descEngineMode">LM Studio サーバー経由か、ブラウザ単体 (Wllama WebGPU/WASM) で推論するかを切り替えます</span>
-        </div>
-
-        <!-- Mode A: LM Studio Settings Group -->
-        <div id="lmStudioSettingsGroup" class="engine-settings-group">
-          <!-- LM Studio Server URL -->
-          <div class="setting-item">
-            <label for="settingBaseUrl" data-i18n="labelBaseUrl">LM Studio サーバー URL</label>
-            <div class="input-with-button">
-              <input type="text" id="settingBaseUrl" value="http://localhost:1234" class="text-input">
-              <button id="btnTestConnection" class="btn-secondary" data-i18n="btnTestConnection">🔌 接続テスト</button>
-            </div>
-            <span class="setting-desc" data-i18n="descBaseUrl">LM Studio の Local Server (デフォルトポート 1234)</span>
-          </div>
-
-          <!-- Model Selection -->
-          <div class="setting-item">
-            <label for="settingModel" data-i18n="labelModel">使用モデル</label>
-            <select id="settingModel" class="select-input">
-              <option value="" data-i18n="optModelAuto">(ロード済みモデルを自動検出)</option>
-            </select>
-            <input type="text" id="settingModelCustom" data-i18n-placeholder="placeholderModelCustom" placeholder="モデル識別名を手動入力..." class="text-input"
-              style="margin-top: 6px; display: none;">
-            <span class="setting-desc" data-i18n="descModel">LM Studio にロードされているモデルを選択または手動指定</span>
-          </div>
-
-          <!-- API Mode -->
-          <div class="setting-item">
-            <label for="settingApiMode" data-i18n="labelApiMode">API 呼び出しモード</label>
-            <select id="settingApiMode" class="select-input">
-              <option value="completions" data-i18n="optApiModeCompletions">Completions API (/v1/completions) - PFML3推奨</option>
-              <option value="chat" data-i18n="optApiModeChat">Chat API (/v1/chat/completions)</option>
-            </select>
-            <span class="setting-desc" data-i18n="descApiMode">PLaMo 3 Translate は PFML3 形式の Completions 呼び出しで最も高い精度を発揮します</span>
-          </div>
-        </div>
-
-        <!-- Mode B: In-Browser Wllama Settings Group -->
-        <div id="wllamaSettingsGroup" class="engine-settings-group" style="display: none;">
-          <div class="setting-item">
-            <label for="settingWllamaModel" data-i18n="labelWllamaModel">ブラウザ内蔵モデル (PLaMo 3 Translate 0.8B GGUF)</label>
-            <select id="settingWllamaModel" class="select-input"></select>
-            <input type="text" id="settingWllamaModelCustom" data-i18n-placeholder="placeholderWllamaUrl" placeholder="GGUF モデルの直リンク URL を入力..." class="text-input"
-              style="margin-top: 6px; display: none;">
-            <span class="setting-desc" data-i18n="descWllamaModel">初回のみ Hugging Face からダウンロードされ、ブラウザの OPFS にキャッシュされます</span>
-          </div>
-
-          <div class="setting-item">
-            <label class="checkbox-label">
-              <input type="checkbox" id="settingWllamaWebGpu" checked>
-              <span data-i18n="labelWllamaWebGpu">WebGPU ハードウェアアクセラレーションを有効化 (推奨)</span>
-            </label>
-            <span class="setting-desc" data-i18n="descWllamaWebGpu">非対応環境または初期化失敗時は自動的に WASM (CPU) へフォールバックします</span>
-          </div>
-
-          <div class="wllama-control-box">
-            <div class="wllama-btn-row">
-              <button type="button" id="btnWllamaLoad" class="btn-secondary" data-i18n="btnWllamaLoad">📥 モデルをロード / DL</button>
-              <button type="button" id="btnWllamaUnload" class="btn-secondary" data-i18n="btnWllamaUnload">⏹ メモリ解放</button>
-              <button type="button" id="btnWllamaClearCache" class="btn-secondary" data-i18n="btnWllamaClearCache">🗑 キャッシュ削除</button>
-            </div>
-            <div id="wllamaProgressWrap" class="wllama-progress-wrap" style="display: none;">
-              <div id="wllamaProgressBar" class="wllama-progress-bar" style="width: 0%;"></div>
-            </div>
-            <div id="wllamaStatusText" class="wllama-status-text" data-i18n="wllamaStatusIdle">未ロード（翻訳時または上のボタンでロードされます）</div>
-          </div>
-        </div>
-
-        <!-- In-Page Selection Popup Mode -->
-        <div id="inlineSettingsContainer">
-          <div class="setting-item">
-            <label for="settingSelectionMode" data-i18n="labelSelectionMode">Webページ内での選択テキスト翻訳</label>
-            <select id="settingSelectionMode" class="select-input">
-              <option value="button" data-i18n="optSelectionModeButton">アイコンボタンを表示 (クリックで翻訳カードを開く)</option>
-              <option value="instant" data-i18n="optSelectionModeInstant">選択時に即座に翻訳カードを開く</option>
-              <option value="off" data-i18n="optSelectionModeOff">無効 (右クリックメニューまたはサイドバーから翻訳)</option>
-            </select>
-          </div>
-
-          <!-- In-Page Translation Display Style (Window vs Iframe) -->
-          <div class="setting-item">
-            <label for="settingInlineDisplayMode" data-i18n="labelInlineDisplayMode">インライン翻訳の表示形式</label>
-            <select id="settingInlineDisplayMode" class="select-input">
-              <option value="window" data-i18n="optInlineModeWindow">フロート小窓 (P-core最速 / 推奨)</option>
-              <option value="iframe" data-i18n="optInlineModeIframe">ページ内カード (iframe)</option>
-            </select>
-            <span class="setting-desc" data-i18n="descInlineDisplayMode">デスクトップ小窓にすることでWindowsの効率モード(EcoQoS)を回避し、メイン窓と同じ最高速で推論します</span>
-          </div>
-        </div>
-
-        <!-- Auto Ja/En switch -->
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="settingAutoSwitchJaEn" checked>
-            <span data-i18n="labelAutoSwitchJaEn">日本語を入力した時は自動的に英語へ翻訳する</span>
-          </label>
-          <span class="setting-desc" data-i18n="descAutoSwitchJaEn">翻訳先が「日本語」の状態で日本語を入力した場合、自動で英語に反転します</span>
-        </div>
-
-        <!-- Temperature & Max Tokens -->
-        <div class="setting-row">
-          <div class="setting-col">
-            <label for="settingTemperature" data-i18n="labelTemperature">Temperature (温度)</label>
-            <input type="number" id="settingTemperature" min="0" max="1" step="0.1" value="0" class="text-input">
-            <span class="setting-desc" data-i18n="descTemperature">0: 最も確定的・一貫</span>
-          </div>
-          <div class="setting-col">
-            <label for="settingMaxTokens" data-i18n="labelMaxTokens">Max Tokens</label>
-            <input type="number" id="settingMaxTokens" min="64" max="8192" step="64" value="1024" class="text-input">
-            <span class="setting-desc" data-i18n="descMaxTokens">最大生成トークン数</span>
-          </div>
-        </div>
-
-        <!-- Save Button & Feedback -->
-        <div class="settings-actions">
-          <button id="btnSaveSettings" class="btn-primary" data-i18n="btnSaveSettings">設定を保存</button>
-          <span id="settingsSaveStatus" class="save-status" data-i18n="saveStatusSuccess" style="display: none;">✓ 保存しました</span>
-        </div>
-      </div>
-    </section>
-
     <!-- Footer -->
     <footer class="app-footer">
       <span>PLaMo-3-Translate × LM Studio / Wllama</span>
-      <span class="footer-version">v1.1.0</span>
+      <span class="footer-version">v1.2.0</span>
     </footer>
   </div>
 

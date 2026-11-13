@@ -30,6 +30,18 @@ async function setupContextMenus() {
       });
 
       chrome.contextMenus.create({
+        id: 'plamo-translate-image',
+        title: PlamoI18n.t('menuTranslateImage', {}, lang),
+        contexts: ['image']
+      });
+
+      chrome.contextMenus.create({
+        id: 'plamo-translate-area',
+        title: PlamoI18n.t('menuTranslateArea', {}, lang),
+        contexts: ['page', 'image']
+      });
+
+      chrome.contextMenus.create({
         id: 'plamo-translate-page',
         title: PlamoI18n.t('menuTranslatePage', {}, lang),
         contexts: ['page']
@@ -53,6 +65,18 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
+async function broadcastClearOcrOverlays(senderTabId = null) {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (!tab.id || tab.id === senderTabId) continue;
+      chrome.tabs.sendMessage(tab.id, { type: 'CLEAR_OCR_OVERLAYS' }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('Could not broadcast CLEAR_OCR_OVERLAYS:', err);
+  }
+}
+
 // 2. Handle Context Menu Actions
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!tab || !tab.id) return;
@@ -75,6 +99,25 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         type: 'PLAMO_SIDE_PANEL_AUTO_TRANSLATE',
         text: selectedText
       }).catch(() => {});
+    }
+  } else if (info.menuItemId === 'plamo-translate-image') {
+    broadcastClearOcrOverlays(tab.id);
+    try {
+      await chrome.tabs.sendMessage(tab.id, {
+        type: 'TRANSLATE_IMAGE_ELEMENT',
+        srcUrl: info.srcUrl || ''
+      });
+    } catch (err) {
+      console.warn('Could not send image translate message to tab:', err);
+    }
+  } else if (info.menuItemId === 'plamo-translate-area') {
+    broadcastClearOcrOverlays(tab.id);
+    try {
+      await chrome.tabs.sendMessage(tab.id, {
+        type: 'START_AREA_OCR_TRANSLATION'
+      });
+    } catch (err) {
+      console.warn('Could not send area OCR message to tab:', err);
     }
   } else if (info.menuItemId === 'plamo-translate-page') {
     try {
@@ -159,6 +202,10 @@ async function resolveDetectedLanguage(text, specifiedSourceLang) {
       if (res && Array.isArray(res.languages) && res.languages.length > 0) {
         const top = res.languages[0];
         if (top && top.language && top.language !== 'und' && top.percentage > 30) {
+          // Guard against Chrome CLD misclassifying Kanji-heavy Japanese text as Chinese
+          if (/^zh(?:$|[-_])/i.test(top.language) && /[\u3040-\u309F\u30A1-\u30FA\u30FD-\u30FF]/.test(text)) {
+            return 'ja';
+          }
           return top.language;
         }
       }
@@ -183,12 +230,43 @@ chrome.windows.onRemoved.addListener((windowId) => {
   }
 });
 
+/**
+ * Convert ArrayBuffer to Base64 Data URL safely in MV3 Service Worker
+ * @param {ArrayBuffer} buffer
+ * @param {string} mimeType
+ * @returns {string}
+ */
+function arrayBufferToDataUrl(buffer, mimeType = 'image/png') {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  const chunks = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
+  }
+  const base64 = btoa(chunks.join(''));
+  return `data:${mimeType};base64,${base64}`;
+}
+
 // 4. Message Router
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || !message.type) return false;
 
+  // Forward streaming chunks from Offscreen Wllama to the originating content script tab if applicable
+  if (message.type === 'WLLAMA_STREAM_CHUNK') {
+    if (message.targetTabId && message.requestId) {
+      chrome.tabs.sendMessage(message.targetTabId, {
+        type: 'PLAMO_OVERLAY_STREAM_CHUNK',
+        requestId: message.requestId,
+        chunk: message.chunk,
+        currentText: message.currentText,
+        engineMode: 'wllama'
+      }).catch(() => {});
+    }
+    return false;
+  }
+
   // Ignore messages targeted at the Offscreen Document or broadcast progress events
-  if (message.target === 'offscreen' || message.type === 'WLLAMA_PROGRESS') {
+  if (message.target === 'offscreen' || message.type === 'WLLAMA_PROGRESS' || message.type === 'OCR_PROGRESS') {
     return false;
   }
 
@@ -196,6 +274,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
       switch (message.type) {
+        case 'OCR_PIPELINE_STARTED': {
+          const senderTabId = sender && sender.tab ? sender.tab.id : null;
+          broadcastClearOcrOverlays(senderTabId);
+          sendResponse({ ok: true });
+          break;
+        }
         case 'OPEN_FLOAT_WINDOW': {
           const text = message.text || '';
           const isEditable = Boolean(message.isEditable);
@@ -235,6 +319,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           activeFloatWindowId = win.id;
           sendResponse({ ok: true, windowId: win.id });
+          break;
+        }
+        case 'FETCH_IMAGE_DATA_URL': {
+          const imageUrl = message.imageUrl || '';
+          if (!imageUrl) {
+            sendResponse({ ok: false, error: 'Image URL is empty' });
+            break;
+          }
+          if (imageUrl.startsWith('data:')) {
+            sendResponse({ ok: true, dataUrl: imageUrl });
+            break;
+          }
+          const resp = await fetch(imageUrl, { credentials: 'omit', cache: 'force-cache' });
+          if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status} while fetching image`);
+          }
+          const contentType = (resp.headers.get('content-type') || 'image/png').split(';')[0].trim();
+          const buf = await resp.arrayBuffer();
+          const dataUrl = arrayBufferToDataUrl(buf, contentType);
+          sendResponse({ ok: true, dataUrl });
+          break;
+        }
+        case 'CAPTURE_VISIBLE_TAB': {
+          const windowId = sender.tab ? sender.tab.windowId : null;
+          const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
+          sendResponse({ ok: true, dataUrl });
+          break;
+        }
+        case 'OCR_RECOGNIZE_IMAGE': {
+          const stored = await chrome.storage.local.get(DEFAULT_SETTINGS);
+          const ocrRes = await sendToOffscreen({
+            type: 'OFFSCREEN_OCR_RECOGNIZE',
+            imageDataUrl: message.imageDataUrl,
+            ocrLang: message.ocrLang || stored.ocrLang || stored.sourceLang || 'auto',
+            ocrEngine: message.ocrEngine || stored.ocrEngine || 'ndlocr',
+            singleBlock: Boolean(message.singleBlock)
+          });
+          sendResponse(ocrRes);
           break;
         }
         case 'TEST_CONNECTION':
@@ -293,6 +415,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const context = message.context !== undefined ? message.context : settings.context;
           const glossaryText = message.glossaryText !== undefined ? message.glossaryText : settings.glossaryText;
           const engineMode = message.engineMode || settings.engineMode || 'lmstudio';
+          const requestId = message.requestId || null;
+          const targetTabId = sender.tab ? sender.tab.id : null;
 
           const effectiveTargetLang = resolveTargetLang(text, sourceLang, targetLang, autoSwitchJaEn, form);
           const detectedSourceLang = await resolveDetectedLanguage(text, sourceLang);
@@ -316,7 +440,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               useWebGpu: message.wllamaUseWebGpu !== undefined ? message.wllamaUseWebGpu : settings.wllamaUseWebGpu,
               nCtx: settings.wllamaContextSize || DEFAULT_SETTINGS.wllamaContextSize,
               temperature: message.temperature !== undefined ? message.temperature : settings.temperature,
-              maxTokens: message.maxTokens !== undefined ? message.maxTokens : settings.maxTokens
+              maxTokens: message.maxTokens !== undefined ? message.maxTokens : settings.maxTokens,
+              requestId,
+              targetTabId
             });
 
             if (!offRes || !offRes.ok) {
@@ -359,6 +485,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   currentText,
                   engineMode: 'lmstudio'
                 }).catch(() => {});
+                // Forward streaming chunk to originating content script tab if requestId is present
+                if (targetTabId && requestId) {
+                  chrome.tabs.sendMessage(targetTabId, {
+                    type: 'PLAMO_OVERLAY_STREAM_CHUNK',
+                    requestId,
+                    chunk,
+                    currentText,
+                    engineMode: 'lmstudio'
+                  }).catch(() => {});
+                }
               }
             });
 

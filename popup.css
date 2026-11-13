@@ -116,11 +116,26 @@ body {
 /* Header */
 .app-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--border-color);
+  gap: 8px;
+}
+
+.header-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 10px;
+}
+
+.header-engine-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .brand {
@@ -154,13 +169,17 @@ body {
 }
 
 .header-status {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
+  padding: 4px 9px;
   background: var(--bg-muted);
+  border: 1px solid var(--border-color);
   border-radius: 20px;
   font-size: 11px;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
 }
 
 .status-dot {
@@ -168,6 +187,7 @@ body {
   height: 8px;
   border-radius: 50%;
   display: inline-block;
+  flex-shrink: 0;
 }
 
 .status-dot.connected {
@@ -182,6 +202,9 @@ body {
 .status-text {
   font-weight: 600;
   font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-actions {
@@ -211,6 +234,11 @@ body {
   border-color: var(--primary);
 }
 
+.icon-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
 /* Quick Tools Bar */
 .quick-tools-bar {
   display: flex;
@@ -220,13 +248,15 @@ body {
 }
 
 .btn-tool {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-block-size: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 5px 8px;
-  font-size: 11.5px;
+  padding: 5px 6px;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
   background: var(--bg-card);
@@ -241,6 +271,102 @@ body {
   background: var(--primary-light);
   color: var(--primary);
   border-color: var(--primary);
+}
+
+.btn-tool:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.btn-tool:active {
+  transform: translateY(0.5px);
+}
+
+/* Color-coded Quick Tool Variants for Instant Recognition */
+.btn-tool-selection {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+}
+
+.btn-tool-selection:hover {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #3b82f6;
+}
+
+.btn-tool-selection:focus-visible {
+  outline-color: #2563eb;
+}
+
+.btn-tool-ocr {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #6ee7b7;
+}
+
+.btn-tool-ocr:hover {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #10b981;
+}
+
+.btn-tool-ocr:focus-visible {
+  outline-color: #059669;
+}
+
+.btn-tool-page {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-color: #c4b5fd;
+}
+
+.btn-tool-page:hover {
+  background: #ede9fe;
+  color: #5b21b6;
+  border-color: #8b5cf6;
+}
+
+.btn-tool-page:focus-visible {
+  outline-color: #7c3aed;
+}
+
+@media (prefers-color-scheme: dark) {
+  .btn-tool-selection {
+    background: rgba(37, 99, 235, 0.2);
+    color: #93c5fd;
+    border-color: #2563eb;
+  }
+
+  .btn-tool-selection:hover {
+    background: rgba(59, 130, 246, 0.34);
+    color: #dbeafe;
+    border-color: #60a5fa;
+  }
+
+  .btn-tool-ocr {
+    background: rgba(16, 185, 129, 0.18);
+    color: #6ee7b7;
+    border-color: #059669;
+  }
+
+  .btn-tool-ocr:hover {
+    background: rgba(16, 185, 129, 0.32);
+    color: #a7f3d0;
+    border-color: #34d399;
+  }
+
+  .btn-tool-page {
+    background: rgba(139, 92, 246, 0.2);
+    color: #c4b5fd;
+    border-color: #7c3aed;
+  }
+
+  .btn-tool-page:hover {
+    background: rgba(139, 92, 246, 0.34);
+    color: #ede9fe;
+    border-color: #a78bfa;
+  }
 }
 
 /* Language & Style Bar */
@@ -770,7 +896,8 @@ body {
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 600;
-  padding: 4px 6px;
+  min-block-size: 24px;
+  padding: 3px 7px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -779,6 +906,11 @@ body {
 
 .mode-pill:hover {
   color: var(--text-primary);
+}
+
+.mode-pill:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
 }
 
 .mode-pill.active {
