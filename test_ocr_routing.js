@@ -265,6 +265,133 @@ async function main() {
     );
   });
 
+  // --- TEST SET 5: Source language resolution (preventing NDLOCR-Lite ZH->EN misclassification) ---
+  await runTest('5a. background.js resolveDetectedLanguage overrides CLD "zh" to "ja" when text contains kana', async () => {
+    const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
+    const pfmlSrc = fs.readFileSync(path.join(__dirname, 'pfml.js'), 'utf8');
+    const fnMatch = bgSrc.match(/(async function resolveDetectedLanguage\([\s\S]*?\r?\n\})/);
+    assert.ok(fnMatch, 'Could not extract resolveDetectedLanguage from background.js');
+
+    let mockLanguages = [{ language: 'zh', percentage: 90 }];
+    const bgSandbox = {
+      chrome: {
+        i18n: {
+          detectLanguage: (_txt, cb) => cb({ languages: mockLanguages })
+        }
+      },
+      console: { warn: () => {} }
+    };
+    vm.createContext(bgSandbox);
+    vm.runInContext(`${pfmlSrc}\n${fnMatch[1]}\nglobalThis.resolveDetectedLanguage = resolveDetectedLanguage;`, bgSandbox);
+
+    assert.strictEqual(await bgSandbox.resolveDetectedLanguage('新機能一覧の設定', 'auto'), 'ja');
+    mockLanguages = [{ language: 'zh-TW', percentage: 95 }];
+    assert.strictEqual(await bgSandbox.resolveDetectedLanguage('東京都の本社', 'auto'), 'ja');
+    mockLanguages = [{ language: 'zh', percentage: 95 }];
+    assert.strictEqual(await bgSandbox.resolveDetectedLanguage('简体中文测试文本', 'auto'), 'zh');
+    assert.strictEqual(await bgSandbox.resolveDetectedLanguage('東京都渋谷区', 'ja'), 'ja');
+  });
+
+  await runTest('5b. content.js resolves overlay sourceLang to "ja" for NDLOCR-Lite / CJK blocks and aggregates pairCounts', () => {
+    const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+    const helperMatch = contentSrc.match(
+      /const KANA_LETTER_REGEX = (\/[\s\S]*?\/);[\s\S]*?const CJK_SCRIPT_REGEX = (\/[\s\S]*?\/);[\s\S]*?(function resolveOverlaySourceLang\([\s\S]*?\r?\n\s{4}\})/
+    );
+    assert.ok(helperMatch, 'Could not locate resolveOverlaySourceLang in content.js');
+
+    const ovSandbox = {
+      activeOcrLang: 'auto',
+      lastOcrDetectedLang: 'ja',
+      allText: '設定の保存\n東京都',
+      pageLang: '',
+      KANA_LETTER_REGEX: null,
+      CJK_SCRIPT_REGEX: null
+    };
+    vm.createContext(ovSandbox);
+    vm.runInContext(`
+      const KANA_LETTER_REGEX = ${helperMatch[1]};
+      const CJK_SCRIPT_REGEX = ${helperMatch[2]};
+      function getActiveOriginalText() { return globalThis.allText; }
+      function getOverlayPageLang() { return globalThis.pageLang; }
+      ${helperMatch[3]}
+      globalThis.resolveOverlaySourceLang = resolveOverlaySourceLang;
+    `, ovSandbox);
+
+    // Kanji-only block inside a Japanese NDLOCR-Lite session -> 'ja'
+    assert.strictEqual(ovSandbox.resolveOverlaySourceLang('東京都'), 'ja');
+    // Pure Kanji single-crop on non-zh page when NDLOCR-Lite ran -> 'ja'
+    ovSandbox.allText = '会社概要';
+    assert.strictEqual(ovSandbox.resolveOverlaySourceLang('会社概要'), 'ja');
+    // Pure English block inside Japanese image stays undefined ('auto' -> 'en')
+    assert.strictEqual(ovSandbox.resolveOverlaySourceLang('Architecture'), undefined);
+    // Chinese page with no Kana and NDLOCR fallback -> undefined (allows 'zh')
+    ovSandbox.pageLang = 'zh-cn';
+    assert.strictEqual(ovSandbox.resolveOverlaySourceLang('系统设置'), undefined);
+
+    assert.match(contentSrc, /lastOcrDetectedLang\s*=\s*ocrRes\.detectedOcrLang\s*\|\|\s*''/);
+    assert.match(contentSrc, /resolveOverlaySourceLang\(blk\.text\)/);
+    assert.match(contentSrc, /resolveOverlaySourceLang\(batchText\)/);
+    assert.match(contentSrc, /pickBestPair\s*=\s*\(\)\s*=>/);
+  });
+
+  // --- TEST SET 6: Sidebar/Popup layout & keep-open contracts ---
+  await runTest('6a. popup.js keeps sidebar open when triggering Area OCR translation (no window.close)', () => {
+    const popupJs = fs.readFileSync(path.join(__dirname, 'popup.js'), 'utf8');
+    const ocrBlockMatch = popupJs.match(/if\s*\(\s*btnAreaOcrTranslate\s*\)\s*\{([\s\S]*?)\r?\n\s{2}\}/);
+    assert.ok(ocrBlockMatch, 'Could not locate btnAreaOcrTranslate handler in popup.js');
+    assert.ok(
+      ocrBlockMatch[1].includes("type: 'START_AREA_OCR_TRANSLATION'"),
+      'btnAreaOcrTranslate must send START_AREA_OCR_TRANSLATION'
+    );
+    assert.ok(
+      !/window\.close\s*\(/.test(ocrBlockMatch[1]),
+      'btnAreaOcrTranslate must NOT call window.close() so the sidebar remains open'
+    );
+  });
+
+  await runTest('6b. popup.html places engine-mode-pills next to header-status and btnAreaOcrTranslate directly right of btnGrabSelection', () => {
+    const popupHtml = fs.readFileSync(path.join(__dirname, 'popup.html'), 'utf8');
+    const headerRowMatch = popupHtml.match(/<div class="header-engine-row">([\s\S]*?)<\/div>\s*<\/header>/);
+    assert.ok(headerRowMatch, 'popup.html must define .header-engine-row inside header');
+    assert.ok(headerRowMatch[1].includes('class="engine-mode-pills"'), '.header-engine-row must contain .engine-mode-pills');
+    assert.ok(headerRowMatch[1].includes('class="header-status"'), '.header-engine-row must contain .header-status');
+
+    const toolsMatch = popupHtml.match(/<section class="quick-tools-bar">([\s\S]*?)<\/section>/);
+    assert.ok(toolsMatch, 'popup.html must define .quick-tools-bar');
+    const grabIdx = toolsMatch[1].indexOf('id="btnGrabSelection"');
+    const ocrIdx = toolsMatch[1].indexOf('id="btnAreaOcrTranslate"');
+    const pageIdx = toolsMatch[1].indexOf('id="btnPageTranslate"');
+    assert.ok(grabIdx !== -1 && ocrIdx !== -1 && pageIdx !== -1, 'All 3 quick tool buttons must be present');
+    assert.ok(grabIdx < ocrIdx && ocrIdx < pageIdx, 'btnAreaOcrTranslate must sit immediately right of btnGrabSelection before btnPageTranslate');
+  });
+
+  await runTest('6c. popup.html places #settingsPanel at top right after header (before quick-tools-bar & main)', () => {
+    const popupHtml = fs.readFileSync(path.join(__dirname, 'popup.html'), 'utf8');
+    const headerEndIdx = popupHtml.indexOf('</header>');
+    const settingsIdx = popupHtml.indexOf('id="settingsPanel"');
+    const toolsIdx = popupHtml.indexOf('class="quick-tools-bar"');
+    const mainIdx = popupHtml.indexOf('<main class="translation-workspace"');
+    assert.ok(headerEndIdx !== -1 && settingsIdx !== -1 && toolsIdx !== -1 && mainIdx !== -1);
+    assert.ok(headerEndIdx < settingsIdx && settingsIdx < toolsIdx && toolsIdx < mainIdx, '#settingsPanel must appear directly after header above quick-tools-bar and main');
+    assert.match(popupHtml, /id="btnToggleSettings"[^>]*aria-expanded="false"/, 'btnToggleSettings must include aria-expanded="false"');
+  });
+
+  await runTest('6d. quick-tools-bar buttons have distinct color variant classes and light/dark styles', () => {
+    const popupHtml = fs.readFileSync(path.join(__dirname, 'popup.html'), 'utf8');
+    const popupCss = fs.readFileSync(path.join(__dirname, 'popup.css'), 'utf8');
+    assert.match(popupHtml, /id="btnGrabSelection"[^>]*class="[^"]*\bbtn-tool-selection\b/);
+    assert.match(popupHtml, /id="btnAreaOcrTranslate"[^>]*class="[^"]*\bbtn-tool-ocr\b/);
+    assert.match(popupHtml, /id="btnPageTranslate"[^>]*class="[^"]*\bbtn-tool-page\b/);
+
+    for (const cls of ['.btn-tool-selection', '.btn-tool-ocr', '.btn-tool-page']) {
+      assert.ok(popupCss.includes(`${cls} {`), `popup.css must define ${cls}`);
+      assert.ok(popupCss.includes(`${cls}:hover {`), `popup.css must define ${cls}:hover`);
+      assert.ok(popupCss.includes(`${cls}:focus-visible {`), `popup.css must define ${cls}:focus-visible`);
+    }
+    const darkBlock = popupCss.match(/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*\.btn-tool-selection[\s\S]*\.btn-tool-ocr[\s\S]*\.btn-tool-page[\s\S]*\}/);
+    assert.ok(darkBlock, 'popup.css must include dark mode styles for all 3 quick tool buttons');
+  });
+
   console.log(`\nSummary: ${passCount} passed, ${failCount} failed`);
   if (failCount > 0) process.exit(1);
 }

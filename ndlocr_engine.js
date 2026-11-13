@@ -44,7 +44,8 @@
   const IMAGENET_MEAN = [0.485, 0.456, 0.406];
   const IMAGENET_STD = [0.229, 0.224, 0.225];
 
-  const LEADING_BULLET_REGEX = /^[\s●○◎◆◇■□▲△▼▽・•]+/;
+  const LEADING_BULLET_REGEX = /^[\s●○◎◆◇■□▲△▼▽・•·▪▫◦‣⁃∙❖➢➤✔✓☑]+/;
+  const LIST_MARKER_REGEX = /^[\s]*([●○◎◆◇■□▲△▼▽・•·▪▫◦‣⁃∙❖➢➤✔✓☑※†‡§¶*–—\-]|[①-⑳㉑-㊿❶-❾]|\d{1,3}[\.\)]|\([0-9a-zA-Z]{1,3}\)|[a-zA-Z][\.\)])\s*/;
   const LEADING_ICON_ARTIFACT_REGEX = /^(?:[①-⑳❶-❾ⓐ-ⓩⒶ-Ⓩ]\s*|[b-hj-zB-HJ-Z0-9]\s+(?=[A-Za-z\u3040-\u9FFF])|[oO0Qq]\s*(?=[\u3040-\u9FFF])|(?:[8B][=~-]|[:;=~^|_/\\><«»❯❮]{1,3}[=~-]?|[+])\s+(?=[A-Za-z\u3040-\u9FFF]))(?![.\):&])/;
 
   function stripLeadingIconArtifacts(text) {
@@ -53,6 +54,135 @@
       .replace(LEADING_BULLET_REGEX, '')
       .replace(LEADING_ICON_ARTIFACT_REGEX, '')
       .trim();
+  }
+
+  /**
+   * Detect an isolated visual bullet/dot/square blob immediately to the left of a line bbox
+   * so list items remain split even if DEIM omitted the bullet glyph or OCR misread it.
+   * @param {{ data: Uint8ClampedArray, width: number, height: number }} imageData
+   * @param {{ x0: number, y0: number, x1: number, y1: number }} bbox
+   * @returns {boolean}
+   */
+  function detectVisualBulletLeftOfLine(imageData, bbox) {
+    if (!imageData || !imageData.data || !bbox) return false;
+    const { data, width, height } = imageData;
+    const lineH = bbox.y1 - bbox.y0;
+    if (lineH < 8 || lineH > 120 || bbox.x0 < 4) return false;
+
+    const guardX0 = Math.max(0, Math.floor(bbox.x0 - lineH * 2.2));
+    const stripX0 = Math.max(guardX0, Math.floor(bbox.x0 - lineH * 1.8));
+    const stripX1 = Math.max(0, Math.floor(bbox.x0));
+    const stripY0 = Math.max(0, Math.floor(bbox.y0 - lineH * 0.08));
+    const stripY1 = Math.min(height, Math.ceil(bbox.y1 + lineH * 0.08));
+    const gw = stripX1 - guardX0;
+    const sh = stripY1 - stripY0;
+    if (gw < 4 || sh < 6 || (stripX1 - stripX0) < 4) return false;
+
+    // Sample perimeter pixels to get robust local background color (handles light, tinted, and dark themes)
+    const samples = [];
+    for (let x = guardX0; x < stripX1; x++) {
+      for (const y of [stripY0, stripY1 - 1]) {
+        const idx = (y * width + x) * 4;
+        const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+        samples.push({ r, g, b, lum: 0.299 * r + 0.587 * g + 0.114 * b });
+      }
+    }
+    for (let y = stripY0 + 1; y < stripY1 - 1; y++) {
+      const idx = (y * width + (stripX1 - 1)) * 4;
+      const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+      samples.push({ r, g, b, lum: 0.299 * r + 0.587 * g + 0.114 * b });
+    }
+    if (samples.length === 0) return false;
+    samples.sort((a, b) => a.lum - b.lum);
+    const bg = samples[samples.length >> 1];
+
+    const fg = new Uint8Array(gw * sh);
+    for (let sy = 0; sy < sh; sy++) {
+      const y = stripY0 + sy;
+      for (let sx = 0; sx < gw; sx++) {
+        const x = guardX0 + sx;
+        const idx = (y * width + x) * 4;
+        const diff = Math.abs(data[idx] - bg.r) + Math.abs(data[idx + 1] - bg.g) + Math.abs(data[idx + 2] - bg.b);
+        if (diff >= 78) fg[sy * gw + sx] = 1;
+      }
+    }
+
+    const visited = new Uint8Array(gw * sh);
+    const qx = new Int32Array(gw * sh);
+    const qy = new Int32Array(gw * sh);
+    const nonRuleComponents = [];
+
+    for (let sy = 0; sy < sh; sy++) {
+      for (let sx = 0; sx < gw; sx++) {
+        const start = sy * gw + sx;
+        if (!fg[start] || visited[start]) continue;
+        let head = 0, tail = 0;
+        qx[tail] = sx;
+        qy[tail] = sy;
+        tail++;
+        visited[start] = 1;
+
+        let minX = sx, maxX = sx, minY = sy, maxY = sy, area = 0;
+        while (head < tail) {
+          const cx = qx[head];
+          const cy = qy[head];
+          head++;
+          area++;
+          if (cx < minX) minX = cx;
+          if (cx > maxX) maxX = cx;
+          if (cy < minY) minY = cy;
+          if (cy > maxY) maxY = cy;
+
+          const neighbors = [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]];
+          for (let k = 0; k < 4; k++) {
+            const nx = neighbors[k][0], ny = neighbors[k][1];
+            if (nx < 0 || nx >= gw || ny < 0 || ny >= sh) continue;
+            const nIdx = ny * gw + nx;
+            if (fg[nIdx] && !visited[nIdx]) {
+              visited[nIdx] = 1;
+              qx[tail] = nx;
+              qy[tail] = ny;
+              tail++;
+            }
+          }
+        }
+
+        const cw = maxX - minX + 1;
+        const ch = maxY - minY + 1;
+        // Skip vertical border rules spanning nearly the full strip height
+        if (ch >= sh * 0.82 && cw <= Math.max(4, lineH * 0.35)) continue;
+        // Skip horizontal separator bars
+        if (cw >= gw * 0.7 && ch <= 3) continue;
+        if (area < 3) continue;
+
+        nonRuleComponents.push({
+          minX: guardX0 + minX,
+          maxX: guardX0 + maxX,
+          minY: stripY0 + minY,
+          maxY: stripY0 + maxY,
+          cw,
+          ch,
+          touchesLeft: minX === 0
+        });
+      }
+    }
+
+    // If multiple distinct character components sit in the guard strip, it is likely adjacent column text
+    if (nonRuleComponents.length !== 1) return false;
+    const comp = nonRuleComponents[0];
+    if (comp.touchesLeft || comp.minX < stripX0 - 2) return false;
+    if (comp.cw < Math.max(2, lineH * 0.09) || comp.ch < Math.max(2, lineH * 0.09)) return false;
+    if (comp.cw > lineH * 0.95 || comp.ch > lineH * 0.95) return false;
+    const aspect = comp.cw / Math.max(1, comp.ch);
+    if (aspect < 0.45 || aspect > 2.2) return false;
+
+    const gapToText = stripX1 - 1 - comp.maxX;
+    if (gapToText < 1 || gapToText > lineH * 1.45) return false;
+
+    const centerY = (comp.minY + comp.maxY) * 0.5;
+    if (centerY < bbox.y0 + lineH * 0.12 || centerY > bbox.y1 - lineH * 0.12) return false;
+
+    return true;
   }
 
   let ortConfigured = false;
@@ -761,32 +891,49 @@
       lines = sortReadingOrder(selectTextLines(detections));
     }
 
+    let srcImageData = null;
+    if (lines.length > 1) {
+      try {
+        const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
+        if (srcCtx) srcImageData = srcCtx.getImageData(0, 0, width, height);
+      } catch {
+        srcImageData = null;
+      }
+    }
+
     const blocks = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (onProgress) onProgress('recognizing text (NDLOCR PARSeq)', Math.round((i / Math.max(1, lines.length)) * 100));
       const crop = computeCropRect(line, width, height);
       const { text: rawText, confidence } = await recognizeLine(srcCanvas, line, crop, charlist, onProgress);
+      const hasTextBullet = LIST_MARKER_REGEX.test(rawText) || LEADING_BULLET_REGEX.test(rawText) || LEADING_ICON_ARTIFACT_REGEX.test(rawText);
       const text = stripLeadingIconArtifacts(rawText);
       if (confidence < REC_MIN_CONFIDENCE || isNoiseText(text, line, confidence)) continue;
+
+      const bbox = {
+        x0: Math.round(line.x0),
+        y0: Math.round(line.y0),
+        x1: Math.round(line.x1),
+        y1: Math.round(line.y1)
+      };
+      const hasVisualBullet = !hasTextBullet && !crop.isVertical && srcImageData
+        ? detectVisualBulletLeftOfLine(srcImageData, bbox)
+        : false;
 
       blocks.push({
         text,
         confidence: Math.round(confidence * 100),
-        bbox: {
-          x0: Math.round(line.x0),
-          y0: Math.round(line.y0),
-          x1: Math.round(line.x1),
-          y1: Math.round(line.y1)
-        },
+        bbox,
         isMultiLine: false,
-        isVertical: crop.isVertical
+        isVertical: crop.isVertical,
+        isListItem: Boolean(hasTextBullet || hasVisualBullet)
       });
     }
 
     return { width, height, blocks };
   }
 
-  global.NdlOcrEngine = { recognize, isAvailable };
+  global.NdlOcrEngine = { recognize, isAvailable, detectVisualBulletLeftOfLine };
 })(typeof self !== 'undefined' ? self : window);
 

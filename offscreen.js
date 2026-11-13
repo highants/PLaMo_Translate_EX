@@ -546,7 +546,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'OFFSCREEN_OCR_RECOGNIZE': {
-      runOcrRecognition(message.imageDataUrl, message.ocrLang || 'auto', message.ocrEngine || 'ndlocr')
+      runOcrRecognition(message.imageDataUrl, message.ocrLang || 'auto', message.ocrEngine || 'ndlocr', {
+        singleBlock: Boolean(message.singleBlock)
+      })
         .then(result => sendResponse(result))
         .catch(err => {
           console.warn('[Offscreen] OCR recognition failed:', err);
@@ -856,10 +858,17 @@ function loadImageDimensionsAndCanvas(dataUrl) {
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       // NOTE: Do not erase bullet blobs so list markers (•, ·, ●) are preserved for block structure detection.
+      let imageData = null;
+      try {
+        imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      } catch {
+        imageData = null;
+      }
       resolve({
         naturalWidth,
         naturalHeight,
         scale,
+        imageData,
         processedDataUrl: canvas.toDataURL('image/png')
       });
     };
@@ -869,16 +878,16 @@ function loadImageDimensionsAndCanvas(dataUrl) {
 }
 
 // Regex matching decorative symbols, bullets, circles, and OCR icon artifacts
-const ICON_NOISE_CHAR_REGEX = /^[\s@©®™•·●○◎◇◆■□▲△▼▽※†‡§¶|_~^=<>\[\]{}()【】〖〗〔〕「」『』①-⑳㉑-㊿\u2500-\u25FF:;.,'"!?/\\+-]+$/;
+const ICON_NOISE_CHAR_REGEX = /^[\s@©®™•·∙・●○◎◇◆■□▲△▼▽▪▫◦‣⁃❖➢➤✔✓☑※†‡§¶\u2500-\u25FF①-⑳㉑-㊿❶-❾|_~^=<>\[\]{}()【】〖〗〔〕「」『』:;.,'"!?/\\+-]+$/;
 const CJK_CHAR_REGEX = /[\u3040-\u9FFF\uF900-\uFAFF\uAC00-\uD7AF]/;
-const LIST_MARKER_REGEX = /^[\s]*([•·●○◎◇◆■□▲△▼▽※†‡§¶*–—\-]|\d{1,3}[\.\)]|\([0-9a-zA-Z]{1,3}\)|[a-zA-Z][\.\)])\s*/;
-const BULLET_CHAR_REGEX = /^[•·●○◎◇◆■□▲△▼▽※†‡§¶*–—\-]$/;
+const LIST_MARKER_REGEX = /^[\s]*([•·∙・●○◎◇◆■□▲△▼▽▪▫◦‣⁃❖➢➤✔✓☑※†‡§¶*–—\-]|[①-⑳㉑-㊿❶-❾]|\d{1,3}[\.\)]|\([0-9a-zA-Z]{1,3}\)|[a-zA-Z][\.\)])\s*/;
+const BULLET_CHAR_REGEX = /^[•·∙・●○◎◇◆■□▲△▼▽▪▫◦‣⁃❖➢➤✔✓☑※†‡§¶*–—\-①-⑳㉑-㊿❶-❾]$/;
 const LEADING_ICON_ARTIFACT_REGEX = /^(?:[①-⑳❶-❾ⓐ-ⓩⒶ-Ⓩ]\s*|[b-hj-zB-HJ-Z0-9]\s+(?=[A-Za-z\u3040-\u9FFF])|[oO0Qq]\s*(?=[\u3040-\u9FFF])|(?:[8B][=~-]|[:;=~^|_/\\><«»❯❮]{1,3}[=~-]?|[+])\s+(?=[A-Za-z\u3040-\u9FFF]))(?![.\):&])/;
 
 function stripLeadingIconArtifacts(text) {
   if (!text) return '';
   return text
-    .replace(/^[\s●○◎◆◇■□▲△▼▽・•]+/, '')
+    .replace(/^[\s●○◎◆◇■□▲△▼▽・•·▪▫◦‣⁃∙❖➢➤✔✓☑]+/, '')
     .replace(LEADING_ICON_ARTIFACT_REGEX, '')
     .trim();
 }
@@ -1038,14 +1047,23 @@ function extractSegmentsFromLine(line, scale, naturalWidth, naturalHeight) {
   }
 
   const results = [];
+  let pendingBulletX1 = null;
 
   for (const segSymbols of rawSegments) {
     // Check if segment contains CJK characters
     const fullSegStr = segSymbols.map(s => s.text).join('');
     const hasCjk = CJK_CHAR_REGEX.test(fullSegStr);
+    const segFirstX0 = segSymbols[0].bbox.x0;
+    const segLastX1 = segSymbols[segSymbols.length - 1].bbox.x1;
+    const segSpanW = segLastX1 - segFirstX0;
+
+    // Preserve marker if an immediately preceding bullet/dot segment on the same line was split off
+    let hasPendingBullet = pendingBulletX1 !== null && (segFirstX0 - pendingBulletX1) <= lineHeight * 3.8;
+    pendingBulletX1 = null;
 
     // 2. Check if there is a leading bullet/icon sub-chunk separated by a small icon gap (e.g. "● 有料メンバー")
     let startIdx = 0;
+    let hadStrippedLeadingMarker = false;
     const iconGapThreshold = lineHeight * 0.28;
     for (let i = 0; i < Math.min(3, segSymbols.length - 1); i++) {
       const gapAfter = segSymbols[i + 1].bbox.x0 - segSymbols[i].bbox.x1;
@@ -1053,6 +1071,9 @@ function extractSegmentsFromLine(line, scale, naturalWidth, naturalHeight) {
       const prefixConf = segSymbols.slice(0, i + 1).reduce((acc, s) => acc + s.confidence, 0) / (i + 1);
       if (gapAfter >= iconGapThreshold && isLikelyIconArtifactToken(prefixText, prefixConf, hasCjk)) {
         startIdx = i + 1;
+        if (BULLET_CHAR_REGEX.test(prefixText.trim()) || LIST_MARKER_REGEX.test(prefixText.trim()) || /^[oO0Qq•·∙・●○◎◇◆■□▲△▼▽▪▫◦‣⁃]+$/.test(prefixText.trim())) {
+          hadStrippedLeadingMarker = true;
+        }
       }
     }
 
@@ -1060,13 +1081,22 @@ function extractSegmentsFromLine(line, scale, naturalWidth, naturalHeight) {
 
     // 3. Strip leading and trailing pure noise/bullet symbols so bbox tightly wraps real text
     while (trimmed.length > 0 && isLikelyIconArtifactToken(trimmed[0].text, trimmed[0].confidence, hasCjk)) {
-      trimmed.shift();
+      const dropped = trimmed.shift();
+      if (BULLET_CHAR_REGEX.test((dropped.text || '').trim()) || /^[oO0Qq•·∙・●○◎◇◆■□▲△▼▽▪▫◦‣⁃]+$/.test((dropped.text || '').trim())) {
+        hadStrippedLeadingMarker = true;
+      }
     }
     while (trimmed.length > 0 && ICON_NOISE_CHAR_REGEX.test(trimmed[trimmed.length - 1].text)) {
       trimmed.pop();
     }
 
-    if (trimmed.length === 0) continue;
+    if (trimmed.length === 0) {
+      const trimmedSegStr = fullSegStr.trim();
+      if (segSpanW <= lineHeight * 1.6 && (BULLET_CHAR_REGEX.test(trimmedSegStr) || LIST_MARKER_REGEX.test(trimmedSegStr) || /^[•·∙・●○◎◇◆■□▲△▼▽▪▫◦‣⁃oO0Qq①-⑳㉑-㊿❶-❾]+$/.test(trimmedSegStr))) {
+        pendingBulletX1 = segLastX1;
+      }
+      continue;
+    }
 
     // 4. Reconstruct clean text with proper spacing (no spaces between CJK, single space between Latin words)
     let text = '';
@@ -1100,10 +1130,34 @@ function extractSegmentsFromLine(line, scale, naturalWidth, naturalHeight) {
       if (sym.bbox.y1 > maxY) maxY = sym.bbox.y1;
     }
 
+    const isListItem = Boolean(
+      hasPendingBullet ||
+      hadStrippedLeadingMarker ||
+      LIST_MARKER_REGEX.test(text) ||
+      BULLET_CHAR_REGEX.test(text.trim()) ||
+      LEADING_ICON_ARTIFACT_REGEX.test(text)
+    );
+
     text = stripLeadingIconArtifacts(text);
-    if (!text) continue;
-    if (text.length < 2 && !CJK_CHAR_REGEX.test(text)) continue;
-    if (!/[\p{L}\p{N}]/u.test(text)) continue;
+    if (!text) {
+      const trimmedSegStr = fullSegStr.trim();
+      if (segSpanW <= lineHeight * 1.6 && (BULLET_CHAR_REGEX.test(trimmedSegStr) || LIST_MARKER_REGEX.test(trimmedSegStr) || /^[•·∙・●○◎◇◆■□▲△▼▽▪▫◦‣⁃oO0Qq①-⑳㉑-㊿❶-❾]+$/.test(trimmedSegStr))) {
+        pendingBulletX1 = segLastX1;
+      }
+      continue;
+    }
+    if (text.length < 2 && !CJK_CHAR_REGEX.test(text)) {
+      if (BULLET_CHAR_REGEX.test(text) || /^[oO0Qq•·∙・▪▫◦‣⁃]$/.test(text)) {
+        pendingBulletX1 = segLastX1;
+      }
+      continue;
+    }
+    if (!/[\p{L}\p{N}]/u.test(text)) {
+      if (BULLET_CHAR_REGEX.test(text) || /^[•·∙・●○◎◇◆■□▲△▼▽▪▫◦‣⁃]+$/.test(text)) {
+        pendingBulletX1 = segLastX1;
+      }
+      continue;
+    }
 
     const avgConf = confSum / trimmed.length;
     if (avgConf < 32) continue;
@@ -1128,7 +1182,8 @@ function extractSegmentsFromLine(line, scale, naturalWidth, naturalHeight) {
       text,
       confidence: Math.round(avgConf),
       bbox,
-      isMultiLine: false
+      isMultiLine: false,
+      isListItem
     });
   }
 
@@ -1168,8 +1223,11 @@ function mergeProseLinesIfAppropriate(segments, naturalWidth) {
     const curr = { ...segments[i], bbox: { ...segments[i].bbox } };
     let currLineH = curr.bbox.y1 - curr.bbox.y0;
     let currW = curr.bbox.x1 - curr.bbox.x0;
-    const isCurrListItem = LIST_MARKER_REGEX.test(curr.text);
+    const isCurrListItem = Boolean(curr.isListItem) || LIST_MARKER_REGEX.test(curr.text);
     let prevLineLeft = curr.bbox.x0;
+    let currMaxLineW = currW;
+    let lastLineW = currW;
+    let lastLineText = (curr.text || '').trim();
 
     // Only merge non-column text segments
     if (!hasHorizontalSibling[i]) {
@@ -1177,7 +1235,7 @@ function mergeProseLinesIfAppropriate(segments, naturalWidth) {
         const next = segments[i + 1];
         const nextH = next.bbox.y1 - next.bbox.y0;
         const nextW = next.bbox.x1 - next.bbox.x0;
-        const isNextListItem = LIST_MARKER_REGEX.test(next.text);
+        const isNextListItem = Boolean(next.isListItem) || LIST_MARKER_REGEX.test(next.text);
 
         // RULE 1: If the next line starts a new list item (bullet/number), NEVER merge it!
         if (isNextListItem) {
@@ -1238,6 +1296,17 @@ function mergeProseLinesIfAppropriate(segments, naturalWidth) {
           break;
         }
 
+        // RULE 5b: Short trailing line followed by a full-width line signals a finished list item or paragraph
+        if (
+          currMaxLineW > maxH * 6 &&
+          lastLineW <= currMaxLineW * 0.62 &&
+          nextW >= currMaxLineW * 0.72 &&
+          !/[,、，\-‐—（(「『]\s*$/.test(lastLineText) &&
+          !startsWithLowerCase
+        ) {
+          break;
+        }
+
         // --- MERGE ACCEPTED ---
         const prevLast = curr.text.slice(-1);
         const nextFirst = next.text.charAt(0);
@@ -1263,6 +1332,9 @@ function mergeProseLinesIfAppropriate(segments, naturalWidth) {
         prevLineLeft = next.bbox.x0;
         currLineH = nextH;
         currW = curr.bbox.x1 - curr.bbox.x0;
+        currMaxLineW = Math.max(currMaxLineW, nextW);
+        lastLineW = nextW;
+        lastLineText = trimmedNext;
         i++;
       }
     }
@@ -1302,6 +1374,11 @@ function mergeVerticalProseLinesIfAppropriate(segments, naturalHeight) {
       const next = segments[i + 1];
       const nextW = next.bbox.x1 - next.bbox.x0;
       const nextH = next.bbox.y1 - next.bbox.y0;
+
+      // RULE 0: If the next vertical column starts a new bullet/list item, keep it separate
+      if (Boolean(next.isListItem) || LIST_MARKER_REGEX.test(next.text)) {
+        break;
+      }
 
       // RULE 1: Right-to-Left progression (next column must be positioned to the left of previous column)
       // If next column jumps back to the right, it belongs to a new section, tier, or separate article
@@ -1402,9 +1479,11 @@ async function runNdlOcr(imageDataUrl) {
   }
 
   for (const blk of lineBlocks) {
-    const cleanedText = stripLeadingIconArtifacts(blk.text);
+    const rawText = blk.text || '';
+    const hasListMarker = Boolean(blk.isListItem) || LIST_MARKER_REGEX.test(rawText) || BULLET_CHAR_REGEX.test(rawText.trim());
+    const cleanedText = stripLeadingIconArtifacts(rawText);
     if (!cleanedText) continue;
-    const cleanBlk = { ...blk, text: cleanedText };
+    const cleanBlk = { ...blk, text: cleanedText, isListItem: hasListMarker };
     if (cleanBlk.isVertical) {
       flushHorizBuffer();
       vertBuffer.push(cleanBlk);
@@ -1427,7 +1506,7 @@ async function runNdlOcr(imageDataUrl) {
 }
 
 async function runTesseractOcr(imageDataUrl, ocrLang) {
-  const { naturalWidth, naturalHeight, scale, processedDataUrl } = await loadImageDimensionsAndCanvas(imageDataUrl);
+  const { naturalWidth, naturalHeight, scale, imageData, processedDataUrl } = await loadImageDimensionsAndCanvas(imageDataUrl);
   const worker = await ensureOcrWorker(ocrLang);
   const { data } = await worker.recognize(processedDataUrl);
 
@@ -1435,10 +1514,26 @@ async function runTesseractOcr(imageDataUrl, ocrLang) {
     ? data.lines
     : (data && Array.isArray(data.paragraphs) ? data.paragraphs : []);
 
+  const detectVisualBullet = (self.NdlOcrEngine && typeof self.NdlOcrEngine.detectVisualBulletLeftOfLine === 'function')
+    ? self.NdlOcrEngine.detectVisualBulletLeftOfLine
+    : null;
+
   const lineSegments = [];
   for (const line of rawLines) {
     const segs = extractSegmentsFromLine(line, scale, naturalWidth, naturalHeight);
     for (const seg of segs) {
+      const isVert = (seg.bbox.y1 - seg.bbox.y0) > (seg.bbox.x1 - seg.bbox.x0) * 1.25;
+      if (!seg.isListItem && !isVert && imageData && detectVisualBullet) {
+        const scaledBbox = {
+          x0: seg.bbox.x0 * scale,
+          y0: seg.bbox.y0 * scale,
+          x1: seg.bbox.x1 * scale,
+          y1: seg.bbox.y1 * scale
+        };
+        if (detectVisualBullet(imageData, scaledBbox)) {
+          seg.isListItem = true;
+        }
+      }
       lineSegments.push(seg);
     }
   }
@@ -1502,12 +1597,83 @@ function isLikelyEnglishText(text) {
   return kanjiCount <= 3 && latinCount >= 8 && latinCount >= kanjiCount * 6;
 }
 
+function combineOcrResultAsSingleBlock(ocrRes) {
+  if (!ocrRes || !Array.isArray(ocrRes.blocks)) return ocrRes;
+  const validBlocks = ocrRes.blocks.filter(b => b && typeof b.text === 'string' && b.text.trim());
+  if (validBlocks.length === 0) {
+    return { ...ocrRes, text: '', blocks: [] };
+  }
+  if (validBlocks.length === 1) {
+    const only = validBlocks[0];
+    const cleanText = only.text.trim();
+    return {
+      ...ocrRes,
+      text: cleanText,
+      blocks: [{ ...only, text: cleanText }]
+    };
+  }
+
+  let combinedText = validBlocks[0].text.trim();
+  const mergedBbox = validBlocks[0].bbox
+    ? { ...validBlocks[0].bbox }
+    : { x0: 0, y0: 0, x1: ocrRes.width || 100, y1: ocrRes.height || 40 };
+  let confSum = validBlocks[0].confidence || 80;
+  let vertCount = validBlocks[0].isVertical ? 1 : 0;
+
+  for (let i = 1; i < validBlocks.length; i++) {
+    const prev = validBlocks[i - 1];
+    const curr = validBlocks[i];
+    const currText = curr.text.trim();
+    if (curr.bbox) {
+      mergedBbox.x0 = Math.min(mergedBbox.x0, curr.bbox.x0);
+      mergedBbox.y0 = Math.min(mergedBbox.y0, curr.bbox.y0);
+      mergedBbox.x1 = Math.max(mergedBbox.x1, curr.bbox.x1);
+      mergedBbox.y1 = Math.max(mergedBbox.y1, curr.bbox.y1);
+    }
+    confSum += curr.confidence || 80;
+    if (curr.isVertical) vertCount++;
+
+    if (/[A-Za-z]-$/.test(combinedText) && /^[a-z]/.test(currText)) {
+      combinedText = combinedText.slice(0, -1) + currText;
+    } else if (!prev.isVertical && !curr.isVertical && prev.bbox && curr.bbox) {
+      const prevY = (prev.bbox.y0 + prev.bbox.y1) * 0.5;
+      const currY = (curr.bbox.y0 + curr.bbox.y1) * 0.5;
+      const rowH = Math.max(prev.bbox.y1 - prev.bbox.y0, curr.bbox.y1 - curr.bbox.y0, 8);
+      if (Math.abs(currY - prevY) <= rowH * 0.45 && curr.bbox.x0 >= prev.bbox.x1 - 4) {
+        const cjkJoin = /[\u3040-\u30FF\u4E00-\u9FFF]$/.test(combinedText) && /^[\u3040-\u30FF\u4E00-\u9FFF]/.test(currText);
+        combinedText += (cjkJoin ? '' : ' ') + currText;
+      } else {
+        combinedText += '\n' + currText;
+      }
+    } else {
+      combinedText += '\n' + currText;
+    }
+  }
+
+  const singleBlock = {
+    text: combinedText,
+    bbox: mergedBbox,
+    confidence: Math.round(confSum / validBlocks.length),
+    isVertical: vertCount > validBlocks.length / 2,
+    isMultiLine: combinedText.includes('\n') || validBlocks.some(b => b.isMultiLine)
+  };
+  return {
+    ...ocrRes,
+    text: combinedText,
+    blocks: [singleBlock]
+  };
+}
+
 /**
  * @param {string} imageDataUrl
  * @param {string} ocrLang
  * @param {'ndlocr'|'tesseract'} [engine='ndlocr'] NDLOCR-Lite (default) falls back to Tesseract on failure
+ * @param {{ singleBlock?: boolean }} [options]
  */
-function runOcrRecognition(imageDataUrl, ocrLang, engine = 'ndlocr') {
+function runOcrRecognition(imageDataUrl, ocrLang, engine = 'ndlocr', options = {}) {
+  const singleBlock = Boolean(options && options.singleBlock);
+  const finalizeResult = (res) => (singleBlock ? combineOcrResultAsSingleBlock(res) : res);
+
   const next = ocrQueue.then(async () => {
     if (!imageDataUrl) {
       throw new Error('Image data is empty');
@@ -1517,18 +1683,18 @@ function runOcrRecognition(imageDataUrl, ocrLang, engine = 'ndlocr') {
     // Explicit Japanese Tesseract mode
     if (normalizedLang === 'ja-tesseract') {
       const tessJaRes = await runTesseractOcr(imageDataUrl, 'ja-tesseract');
-      return { ...tessJaRes, detectedOcrLang: 'ja-tesseract' };
+      return finalizeResult({ ...tessJaRes, detectedOcrLang: 'ja-tesseract' });
     }
 
     // Explicit Japanese NDLOCR-Lite mode (respect toolbar selection regardless of popup default)
     if (normalizedLang === 'ja' || normalizedLang === 'jpn' || normalizedLang === 'ja-ndlocr') {
       try {
         const ndlRes = await runNdlOcr(imageDataUrl);
-        return { ...ndlRes, detectedOcrLang: 'ja' };
+        return finalizeResult({ ...ndlRes, detectedOcrLang: 'ja' });
       } catch (err) {
         console.warn('[Offscreen OCR] NDLOCR-Lite failed, falling back to Tesseract:', err);
         const fallbackRes = await runTesseractOcr(imageDataUrl, 'ja-tesseract');
-        return { ...fallbackRes, detectedOcrLang: 'ja-tesseract' };
+        return finalizeResult({ ...fallbackRes, detectedOcrLang: 'ja-tesseract' });
       }
     }
 
@@ -1540,19 +1706,19 @@ function runOcrRecognition(imageDataUrl, ocrLang, engine = 'ndlocr') {
           const ndlRes = await runNdlOcr(imageDataUrl);
           if (isLikelyEnglishText(ndlRes.text)) {
             const tessEnRes = await runTesseractOcr(imageDataUrl, 'en');
-            return { ...tessEnRes, detectedOcrLang: 'en' };
+            return finalizeResult({ ...tessEnRes, detectedOcrLang: 'en' });
           }
-          return { ...ndlRes, detectedOcrLang: 'ja' };
+          return finalizeResult({ ...ndlRes, detectedOcrLang: 'ja' });
         } catch (err) {
           console.warn('[Offscreen OCR] NDLOCR-Lite failed, falling back to Tesseract:', err);
         }
       }
-      return await runTesseractOcr(imageDataUrl, 'auto');
+      return finalizeResult(await runTesseractOcr(imageDataUrl, 'auto'));
     }
 
     // English ('en') and all other non-Japanese languages use Tesseract directly
     const tessRes = await runTesseractOcr(imageDataUrl, ocrLang);
-    return normalizedLang === 'en' ? { ...tessRes, detectedOcrLang: 'en' } : tessRes;
+    return finalizeResult(normalizedLang === 'en' ? { ...tessRes, detectedOcrLang: 'en' } : tessRes);
   });
 
   ocrQueue = next.catch(() => { });

@@ -158,8 +158,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   function applyEngineModeVisibility(mode) {
     const isWllama = mode === 'wllama';
     if (settingEngineMode) settingEngineMode.value = isWllama ? 'wllama' : 'lmstudio';
-    if (btnModeLmStudio) btnModeLmStudio.classList.toggle('active', !isWllama);
-    if (btnModeWllama) btnModeWllama.classList.toggle('active', isWllama);
+    if (btnModeLmStudio) {
+      btnModeLmStudio.classList.toggle('active', !isWllama);
+      btnModeLmStudio.setAttribute('aria-pressed', String(!isWllama));
+    }
+    if (btnModeWllama) {
+      btnModeWllama.classList.toggle('active', isWllama);
+      btnModeWllama.setAttribute('aria-pressed', String(isWllama));
+    }
     if (lmStudioSettingsGroup) lmStudioSettingsGroup.style.display = isWllama ? 'none' : 'flex';
     if (wllamaSettingsGroup) wllamaSettingsGroup.style.display = isWllama ? 'flex' : 'none';
   }
@@ -598,7 +604,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Area OCR Drag Selection Translation
+  // Area OCR Drag Selection Translation (keep sidebar open so user can manage OCR flow)
   if (btnAreaOcrTranslate) {
     btnAreaOcrTranslate.addEventListener('click', async () => {
       try {
@@ -606,24 +612,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!tab || !tab.id) return;
 
         await chrome.tabs.sendMessage(tab.id, { type: 'START_AREA_OCR_TRANSLATION' });
-        window.close();
       } catch (err) {
         alert(`${currentUiLang === 'en' ? 'Could not start area OCR translation' : '範囲選択OCR翻訳を開始できませんでした'}: ${err.message}\n(May be restricted on chrome:// URLs)`);
       }
     });
   }
 
-  // Settings Panel Toggle
+  // Settings Panel Toggle (displays at top below header)
   btnToggleSettings.addEventListener('click', () => {
     const isHidden = settingsPanel.style.display === 'none';
     settingsPanel.style.display = isHidden ? 'block' : 'none';
+    btnToggleSettings.setAttribute('aria-expanded', String(isHidden));
     if (isHidden) {
-      settingsPanel.scrollIntoView({ behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   });
 
   btnCloseSettings.addEventListener('click', () => {
     settingsPanel.style.display = 'none';
+    btnToggleSettings.setAttribute('aria-expanded', 'false');
   });
 
   btnTestConnection.addEventListener('click', () => checkConnection(false));

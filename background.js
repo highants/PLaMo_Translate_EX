@@ -202,6 +202,10 @@ async function resolveDetectedLanguage(text, specifiedSourceLang) {
       if (res && Array.isArray(res.languages) && res.languages.length > 0) {
         const top = res.languages[0];
         if (top && top.language && top.language !== 'und' && top.percentage > 30) {
+          // Guard against Chrome CLD misclassifying Kanji-heavy Japanese text as Chinese
+          if (/^zh(?:$|[-_])/i.test(top.language) && /[\u3040-\u309F\u30A1-\u30FA\u30FD-\u30FF]/.test(text)) {
+            return 'ja';
+          }
           return top.language;
         }
       }
@@ -349,7 +353,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             type: 'OFFSCREEN_OCR_RECOGNIZE',
             imageDataUrl: message.imageDataUrl,
             ocrLang: message.ocrLang || stored.ocrLang || stored.sourceLang || 'auto',
-            ocrEngine: message.ocrEngine || stored.ocrEngine || 'ndlocr'
+            ocrEngine: message.ocrEngine || stored.ocrEngine || 'ndlocr',
+            singleBlock: Boolean(message.singleBlock)
           });
           sendResponse(ocrRes);
           break;

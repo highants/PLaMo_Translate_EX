@@ -12,8 +12,8 @@ let code = fs.readFileSync(scriptPath, 'utf8');
 
 // Expose internal functions for unit testing
 code = code.replace(
-  'global.NdlOcrEngine = { recognize, isAvailable };',
-  'global.NdlOcrEngine = { recognize, isAvailable, sortReadingOrder, sortVerticalLines, sortHorizontalLines, isLineVertical };'
+  /global\.NdlOcrEngine\s*=\s*\{[^}]+\};/,
+  'global.NdlOcrEngine = { recognize, isAvailable, detectVisualBulletLeftOfLine, sortReadingOrder, sortVerticalLines, sortHorizontalLines, isLineVertical };'
 );
 
 const sandbox = {
