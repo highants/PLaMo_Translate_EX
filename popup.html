@@ -34,14 +34,21 @@
     <!-- Quick Tools Bar -->
     <section class="quick-tools-bar">
       <div class="engine-mode-pills" role="group" aria-label="Inference Engine Mode">
-        <button id="btnModeLmStudio" class="mode-pill active" data-mode="lmstudio" data-i18n="modeSwitchLmStudio" title="Mode A: LM Studio">🖥️ LM Studio</button>
-        <button id="btnModeWllama" class="mode-pill" data-mode="wllama" data-i18n="modeSwitchWllama" title="Mode B: In-Browser Wllama 0.8B">🌐 ブラウザ内蔵</button>
+        <button id="btnModeLmStudio" class="mode-pill active" data-mode="lmstudio" data-i18n="modeSwitchLmStudio"
+          title="Mode A: LM Studio">🖥️ LM Studio</button>
+        <button id="btnModeWllama" class="mode-pill" data-mode="wllama" data-i18n="modeSwitchWllama"
+          title="Mode B: In-Browser Wllama 0.8B">🌐 ブラウザ内蔵</button>
       </div>
-      <button id="btnGrabSelection" class="btn-tool" data-i18n-title="btnGrabSelectionTitle" title="閲覧中タブの選択テキストを取得して翻訳">
+      <button id="btnGrabSelection" class="btn-tool" data-i18n-title="btnGrabSelectionTitle"
+        title="閲覧中タブの選択テキストを取得して翻訳">
         <span>📥</span> <span data-i18n="btnGrabSelection">選択テキスト</span>
       </button>
       <button id="btnPageTranslate" class="btn-tool" data-i18n-title="btnPageTranslateTitle" title="閲覧中タブのWebページ全体を翻訳">
         <span>🌐</span> <span data-i18n="btnPageTranslate">ページ全体翻訳</span>
+      </button>
+      <button id="btnAreaOcrTranslate" class="btn-tool" data-i18n-title="btnAreaOcrTranslateTitle"
+        title="ページ上の画像や図表をドラッグ選択してオーバースクリーン翻訳">
+        <span data-i18n="btnAreaOcrTranslate">📷 範囲選択OCR翻訳</span>
       </button>
     </section>
 
@@ -86,8 +93,8 @@
           </div>
         </div>
         <div class="card-body">
-          <textarea id="inputText" class="translation-textarea" data-i18n-placeholder="inputPlaceholder" placeholder="翻訳したいテキストを入力... (Ctrl + Enter で翻訳)"
-            rows="5"></textarea>
+          <textarea id="inputText" class="translation-textarea" data-i18n-placeholder="inputPlaceholder"
+            placeholder="翻訳したいテキストを入力... (Ctrl + Enter で翻訳)" rows="5"></textarea>
         </div>
         <div class="card-footer">
           <!-- Collapsible Context & Glossary -->
@@ -96,12 +103,14 @@
             <div class="details-body">
               <div class="field-group">
                 <label for="contextInput" data-i18n="labelContext">コンテキスト (Context)</label>
-                <input type="text" id="contextInput" data-i18n-placeholder="placeholderContext" placeholder="例: ソフトウェア開発の技術ドキュメント" class="text-input">
+                <input type="text" id="contextInput" data-i18n-placeholder="placeholderContext"
+                  placeholder="例: ソフトウェア開発の技術ドキュメント" class="text-input">
               </div>
               <div class="field-group">
                 <label for="glossaryInput" data-i18n="labelGlossary">用語集 (Glossary - 1行に1組: 原文=訳語)</label>
-                <textarea id="glossaryInput" data-i18n-placeholder="placeholderGlossary" placeholder="例:&#10;LLM=大規模言語モデル&#10;Prompt=プロンプト&#10;repository=リポジトリ"
-                  rows="3" class="text-input font-mono"></textarea>
+                <textarea id="glossaryInput" data-i18n-placeholder="placeholderGlossary"
+                  placeholder="例:&#10;LLM=大規模言語モデル&#10;Prompt=プロンプト&#10;repository=リポジトリ" rows="3"
+                  class="text-input font-mono"></textarea>
               </div>
             </div>
           </details>
@@ -183,7 +192,8 @@
             <option value="lmstudio" data-i18n="optEngineLmStudio">モードA: LM Studio ローカルサーバー</option>
             <option value="wllama" data-i18n="optEngineWllama">モードB: ブラウザ内蔵 Wllama 0.8B (Offscreen)</option>
           </select>
-          <span class="setting-desc" data-i18n="descEngineMode">LM Studio サーバー経由か、ブラウザ単体 (Wllama WebGPU/WASM) で推論するかを切り替えます</span>
+          <span class="setting-desc" data-i18n="descEngineMode">LM Studio サーバー経由か、ブラウザ単体 (Wllama WebGPU/WASM)
+            で推論するかを切り替えます</span>
         </div>
 
         <!-- Mode A: LM Studio Settings Group -->
@@ -204,8 +214,8 @@
             <select id="settingModel" class="select-input">
               <option value="" data-i18n="optModelAuto">(ロード済みモデルを自動検出)</option>
             </select>
-            <input type="text" id="settingModelCustom" data-i18n-placeholder="placeholderModelCustom" placeholder="モデル識別名を手動入力..." class="text-input"
-              style="margin-top: 6px; display: none;">
+            <input type="text" id="settingModelCustom" data-i18n-placeholder="placeholderModelCustom"
+              placeholder="モデル識別名を手動入力..." class="text-input" style="margin-top: 6px; display: none;">
             <span class="setting-desc" data-i18n="descModel">LM Studio にロードされているモデルを選択または手動指定</span>
           </div>
 
@@ -213,10 +223,12 @@
           <div class="setting-item">
             <label for="settingApiMode" data-i18n="labelApiMode">API 呼び出しモード</label>
             <select id="settingApiMode" class="select-input">
-              <option value="completions" data-i18n="optApiModeCompletions">Completions API (/v1/completions) - PFML3推奨</option>
+              <option value="completions" data-i18n="optApiModeCompletions">Completions API (/v1/completions) - PFML3推奨
+              </option>
               <option value="chat" data-i18n="optApiModeChat">Chat API (/v1/chat/completions)</option>
             </select>
-            <span class="setting-desc" data-i18n="descApiMode">PLaMo 3 Translate は PFML3 形式の Completions 呼び出しで最も高い精度を発揮します</span>
+            <span class="setting-desc" data-i18n="descApiMode">PLaMo 3 Translate は PFML3 形式の Completions
+              呼び出しで最も高い精度を発揮します</span>
           </div>
         </div>
 
@@ -225,9 +237,10 @@
           <div class="setting-item">
             <label for="settingWllamaModel" data-i18n="labelWllamaModel">ブラウザ内蔵モデル (PLaMo 3 Translate 0.8B GGUF)</label>
             <select id="settingWllamaModel" class="select-input"></select>
-            <input type="text" id="settingWllamaModelCustom" data-i18n-placeholder="placeholderWllamaUrl" placeholder="GGUF モデルの直リンク URL を入力..." class="text-input"
-              style="margin-top: 6px; display: none;">
-            <span class="setting-desc" data-i18n="descWllamaModel">初回のみ Hugging Face からダウンロードされ、ブラウザの OPFS にキャッシュされます</span>
+            <input type="text" id="settingWllamaModelCustom" data-i18n-placeholder="placeholderWllamaUrl"
+              placeholder="GGUF モデルの直リンク URL を入力..." class="text-input" style="margin-top: 6px; display: none;">
+            <span class="setting-desc" data-i18n="descWllamaModel">初回のみ Hugging Face からダウンロードされ、ブラウザの OPFS
+              にキャッシュされます</span>
           </div>
 
           <div class="setting-item">
@@ -240,14 +253,18 @@
 
           <div class="wllama-control-box">
             <div class="wllama-btn-row">
-              <button type="button" id="btnWllamaLoad" class="btn-secondary" data-i18n="btnWllamaLoad">📥 モデルをロード / DL</button>
-              <button type="button" id="btnWllamaUnload" class="btn-secondary" data-i18n="btnWllamaUnload">⏹ メモリ解放</button>
-              <button type="button" id="btnWllamaClearCache" class="btn-secondary" data-i18n="btnWllamaClearCache">🗑 キャッシュ削除</button>
+              <button type="button" id="btnWllamaLoad" class="btn-secondary" data-i18n="btnWllamaLoad">📥 モデルをロード /
+                DL</button>
+              <button type="button" id="btnWllamaUnload" class="btn-secondary" data-i18n="btnWllamaUnload">⏹
+                メモリ解放</button>
+              <button type="button" id="btnWllamaClearCache" class="btn-secondary" data-i18n="btnWllamaClearCache">🗑
+                キャッシュ削除</button>
             </div>
             <div id="wllamaProgressWrap" class="wllama-progress-wrap" style="display: none;">
               <div id="wllamaProgressBar" class="wllama-progress-bar" style="width: 0%;"></div>
             </div>
-            <div id="wllamaStatusText" class="wllama-status-text" data-i18n="wllamaStatusIdle">未ロード（翻訳時または上のボタンでロードされます）</div>
+            <div id="wllamaStatusText" class="wllama-status-text" data-i18n="wllamaStatusIdle">未ロード（翻訳時または上のボタンでロードされます）
+            </div>
           </div>
         </div>
 
@@ -269,7 +286,25 @@
               <option value="window" data-i18n="optInlineModeWindow">フロート小窓 (P-core最速 / 推奨)</option>
               <option value="iframe" data-i18n="optInlineModeIframe">ページ内カード (iframe)</option>
             </select>
-            <span class="setting-desc" data-i18n="descInlineDisplayMode">デスクトップ小窓にすることでWindowsの効率モード(EcoQoS)を回避し、メイン窓と同じ最高速で推論します</span>
+            <span class="setting-desc"
+              data-i18n="descInlineDisplayMode">デスクトップ小窓にすることでWindowsの効率モード(EcoQoS)を回避し、メイン窓と同じ最高速で推論します</span>
+          </div>
+
+          <!-- Image Hover OCR Button -->
+          <div class="setting-item">
+            <label class="checkbox-label">
+              <input type="checkbox" id="settingImageHoverBtn" checked>
+              <span data-i18n="labelImageHoverBtn">画像にマウスを乗せた時に「🖼️ 画像翻訳」ボタンを表示する</span>
+            </label>
+          </div>
+
+          <!-- OCR Engine Selector -->
+          <div class="setting-item">
+            <label for="settingOcrEngine" data-i18n="labelOcrEngine">画像翻訳のOCRエンジン</label>
+            <select id="settingOcrEngine" class="select-input">
+              <option value="ndlocr" data-i18n="ocrEngineNdl">NDLOCR-Lite (国立国会図書館・日本語高精度 / 推奨)</option>
+              <option value="tesseract" data-i18n="ocrEngineTesseract">Tesseract.js (軽量・英語向け)</option>
+            </select>
           </div>
         </div>
 
@@ -299,7 +334,8 @@
         <!-- Save Button & Feedback -->
         <div class="settings-actions">
           <button id="btnSaveSettings" class="btn-primary" data-i18n="btnSaveSettings">設定を保存</button>
-          <span id="settingsSaveStatus" class="save-status" data-i18n="saveStatusSuccess" style="display: none;">✓ 保存しました</span>
+          <span id="settingsSaveStatus" class="save-status" data-i18n="saveStatusSuccess" style="display: none;">✓
+            保存しました</span>
         </div>
       </div>
     </section>

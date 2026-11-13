@@ -23,3 +23,8 @@ build/
 *.tmp
 *.bak
 
+# Large binary model weights
+vendor/ndlocr/*.onnx
+vendor/ort/*.jsep.*
+test_image.png
+

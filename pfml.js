@@ -134,7 +134,10 @@ const DEFAULT_SETTINGS = {
   temperature: 0,
   maxTokens: 1024,
   selectionMode: 'button', // 'button' | 'instant' | 'off'
-  inlineDisplayMode: 'window', // 'window' (Native Float Window, Fastest & Immune to EcoQoS) | 'iframe' (In-page OOPIF)
+  inlineDisplayMode: 'window', // 'window' | 'iframe' (Native Float Window or In-page OOPIF)
+  enableImageHoverButton: true,
+  ocrLang: 'auto',
+  ocrEngine: 'ndlocr', // 'ndlocr' (NDLOCR-Lite ONNX, default; falls back to Tesseract) | 'tesseract'
   popoverCustomWidth: 440,
   popoverCustomHeight: 0
 };
@@ -545,7 +548,7 @@ async function readSseStream(response, onChunk, abortController, isChat = false)
   } finally {
     try {
       reader.releaseLock();
-    } catch {}
+    } catch { }
   }
 
   return accumulatedRaw;
