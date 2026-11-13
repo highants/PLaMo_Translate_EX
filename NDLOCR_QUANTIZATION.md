@@ -1,10 +1,56 @@
 # NDLOCR-Lite ONNX モデル量子化・最適化 知見まとめ
 
-`PlaMo_translate` に同梱している **NDLOCR-Lite**（文字列検出 `DEIMv2` + 文字列認識 `PARSeq` 2モデル）をブラウザ拡張機能の `onnxruntime-web`（WASM シングルスレッド環境）向けに軽量化・高速化した際の検証結果と実装知見をまとめたドキュメントです。
+[English](NDLOCR_QUANTIZATION.en.md) | 日本語 · [← README に戻る](README.md)
+
+> **執筆**: Antigravity (Google Deepmind) — 本プロジェクトにおける NDLOCR-Lite のブラウザ移植・ONNX 量子化パイプライン構築・実測検証を担当
+
+`PlaMo_translate` に同梱している **NDLOCR-Lite**（文字列検出 `DEIMv2` + 文字列認識 `PARSeq` 2モデル）について、**開発に至った経緯**、**制作プロセス（グラフ変換・量子化パイプラインの実装方法）**、およびブラウザ拡張機能の `onnxruntime-web`（WASM シングルスレッド環境）向け実測検証から得られた最適化知見をまとめたドキュメントです。
 
 ---
 
-## 1. 結論サマリー
+## 1. 作成に至った経緯
+
+Chrome 拡張機能（Manifest V3）として外部クラウド API に一切依存せず完全ローカルで画像内テキスト・画面領域 OCR 翻訳を実現するにあたり、当初の課題と要件は次のとおりでした。
+
+1. **日本語（特に縦書き・複雑レイアウト）の認識精度課題**:
+   - 英語や欧文中心の軽量 OCR には `Tesseract.js` が有効でしたが、日本語の縦書き（新聞段組み・書籍・漫画等）や UI スクリーンショット内の混在文字列では行検出・読み順・認識精度に限界がありました。
+2. **NDLOCR-Lite のブラウザ内実行という選択肢**:
+   - 国立国会図書館が公開している **NDLOCR-Lite**（文字列検出 `DEIMv2` ＋ 文字列認識 `PARSeq` `24x256` / `24x384`）は日本語の縦書き・横書き双方で極めて高精度ですが、無加工の FP32 ONNX モデルは **3モデル合計 114.52 MB**（40.26 MB + 36.46 MB + 37.81 MB）に達します。
+3. **ブラウザ拡張・シングルスレッド WASM 特有の制約**:
+   - 拡張機能の Offscreen Document 内（`ort.wasm.min.js`, `numThreads: 1`, `proxy: false`）で読み込む際、**114.52 MB のままでは拡張機能配布パッケージの肥大化、初回モデルロード遅延、および推論時間（`DEIMv2` 単体で 7.5 秒超）が実用のボトルネック**となりました。
+   - 一方で、標準的な `onnxruntime.quantization` の汎用コマンドをそのまま適用すると、モデル破損（認識率 0% 崩壊）や、むしろ FP32 より 1.4〜2.8 倍遅くなる WASM 特有の劣化が発生しました。
+
+これらを解決し、**「認識精度を 98.8〜99.6% 水準に保ったまま、3 モデル合計を 50 MB 未満へ軽量化し、ブラウザ WASM 上の推論速度も高速化する」** ことを目標に、実ブラウザ環境での実測に基づき専用のグラフ変換・ハイブリッド量子化モデルを制作しました。
+
+---
+
+## 2. どのように制作したか（制作プロセス）
+
+Python CPU の理論値に頼らず、**拡張機能と同等の実ブラウザ WASM 環境（`ort.wasm.min.js`, `numThreads: 1`）** で 1 変更ごとにロード時間・推論時間・実画像評価セット（新聞紙面＋UI スクリーンショット 計 78 行・検出 43 行）を計測しながら、段階的に制作しました。
+
+### Step 1: 実 WASM 環境でのベースライン計測とボトルネック特定
+- `DEIMv2`（FP32: 40.26 MB / ロード 1,546ms / 推論 7,529ms）、`PARSeq-256`（FP32: 36.46 MB / 推論 107ms）、`PARSeq-384`（FP32: 37.81 MB / 推論 235ms）を基準値として計測しました。
+- あわせて各モデルの ONNX 計算グラフ構造を解析し、**共有 `Gemm` ノードの展開構造**・**大容量 `text_embed` (`Gather`)**・**出力ヘッド `/head` の重み比率**・**ViT エンコーダ各層の量子化感度**を洗い出しました。
+
+### Step 2: 検出モデル（DEIMv2）の製作（`dynamic-det` 方式）
+- 最初に `Conv + MatMul + Gemm` 全域を INT8 化したところ、サイズは 11.59 MB まで縮んだものの WASM 上で `ConvInteger` カーネルがボトルネックとなり **5,488ms（逆効果で 1.4 倍遅延）** になることが判明しました。
+- そこで `Conv` を FP32 に残し、`quant_pre_process(..., skip_symbolic_shape=True)` のうえで **`MatMul` と `Gemm` のみを `QUInt8` 動的量子化（`MatMulConstBOnly: True`）** する方式を採用し、**15.52 MB（-61.5%）** かつ **約 2 倍高速化（3,744ms / Mean IoU 0.964）** を達成しました。
+
+### Step 3: 認識モデル（PARSeq-256 / 384）向け専用グラフ変換パイプラインの開発
+`PARSeq` はデコーダの自己回帰 32 ステップが展開された計算グラフであり、標準量子化ツールがそのまま使えなかったため、Python（`onnx` + `onnxruntime` + `numpy`）で **WASM 向けハイブリッド変換スクリプト** を自作し、以下の 5 段階パイプラインを通してモデルを制作しました：
+
+1. **共有 `Gemm(transB=1)` の非破壊展開**: 同一重みを 32 回共有する `Gemm` に対し、元配列のインプレース転置バグを避けるため `<weight>__T` を 1 回だけ生成して `MatMul + Add` へ安全置換。
+2. **冗長な定数 `Identity` チェーンの短絡除去**: 出力ヘッド等の共有定数重みを隠していた 342 個の `Identity` ノードを除去し、量子化フィルタから参照可能に整理。
+3. **文字埋め込み表 `Gather` のオンデマンド行単位 Int8 化**: `[7144, 192]`（5.49 MB）の文字埋め込み表を行ごとの最大絶対値対称量子化で `int8` ＋ `row_scale` に変換し、`Gather(int8) → Cast(float32) → Mul(Gather(row_scale))` へグラフ書き換え。推論時に参照した 1 行（192 要素）だけを復元する構造により、サイズを約 1/4 に抑えつつ速度遅延をゼロ化。
+4. **敏感な ViT エンコーダ／Conv 層の FP16 重み格納**: `DynamicQuantizeLinear` による精度劣化を避けるため、残りの大容量 FP32 重みを `float16` initializer ＋ グラフ冒頭 `Cast(to=FLOAT)` へ変換し、ロード時最適化で FP32 同等の推論速度と約半分のロード時間を両立。
+5. **モデル長（`24x256` vs `24x384`）に応じた選択的 `MatMulInteger` (`QInt8`, per-channel) 適用**: レイヤー別アブレーション計測の結果、短文向け `24x256` は `/head`＋`/proj/`＋後半 `blocks.6..11/mlp/fc1` まで量子化し、長文向け `24x384` は系列長による誤差蓄積を防ぐため `/head` のみに限定して精度 **99.57%** を確保しました。
+
+### Step 4: ブラウザ拡張への統合とテスト検証
+- 生成した 3 つの `.int8.onnx` を `PlaMo_translate/vendor/ndlocr/` に配置し、[ndlocr_engine.js](ndlocr_engine.js) から `ort.wasm.min.js` で読み込み、縦書き段組み・箇条書き結合・UI アイコン除去・読み順ソートおよび自動テストによる E2E 検証を実施しました。
+
+---
+
+## 3. 結論サマリー（ベンチマーク比較）
 
 | モデル | 元サイズ (FP32) | 実装後サイズ | 削減率 | 採用した最適化方式 | WASM ロード | WASM 推論時間 | 精度評価（FP32比） |
 | :--- | :---: | :---: | :---: | :--- | :---: | :---: | :--- |
@@ -19,7 +65,7 @@
 
 ---
 
-## 2. 得られた主要知見（落とし穴と解決策）
+## 4. 得られた主要知見（落とし穴と解決策）
 
 ### 知見 1: Python CPU ではなく「実際の ORT Web WASM（シングルスレッド）」で計測必須
 
@@ -91,7 +137,7 @@ PARSeq にそのまま `quantize_dynamic`（または `quant_pre_process` + `qua
 
 ---
 
-## 3. 採用した量子化レシピ（再現手順の要点）
+## 5. 採用した量子化レシピ（再現手順の要点）
 
 ### DEIMv2 (`deim-s-1024x1024.int8.onnx`)
 1. `onnxruntime.quantization.shape_inference.quant_pre_process(..., skip_symbolic_shape=True)`
@@ -109,12 +155,20 @@ PARSeq にそのまま `quantize_dynamic`（または `quant_pre_process` + `qua
 
 ---
 
-## 4. 拡張機能への組み込みと検証記録
+## 6. 拡張機能への組み込み・GitHub 配布構成と検証記録
 
-- **モデル配置先**: `PlaMo_translate/vendor/ndlocr/`（`.gitignore` で `*.onnx` は追跡除外）
-- **エンジン設定更新**: [ndlocr_engine.js](file:///c:/Users/Tetsu/WORKS/Development/PlaMo_translate/ndlocr_engine.js#L20-L31) の `DET_MODEL_FILE`・`REC_SHORT.file`・`REC_MEDIUM.file` を `.int8.onnx` ファイル名へ変更（推論コードや前後処理・`isAvailable()` はそのまま互換）。
+- **モデル配置先**: `PlaMo_translate/vendor/ndlocr/`
+  - `deim-s-1024x1024.int8.onnx`（15,517,172 bytes / 約 15.52 MB）
+  - `parseq-ndl-24x256-30-tiny-189epoch-tegaki3-r8data-202604.int8.onnx`（15,690,595 bytes / 約 15.69 MB）
+  - `parseq-ndl-24x384-50-tiny-300epoch-tegaki3-r8data-202604.int8.onnx`（18,595,504 bytes / 約 18.60 MB）
+- **GitHub リポジトリでの扱い**: `.gitignore` にて `vendor/ndlocr/*.onnx` および `vendor/ort/*.jsep.*` は Git の追跡対象から除外しています。GitHub からソースをクローンしてローカル動作させる場合は、GitHub Releases の配布パッケージから取得した上記 `.int8.onnx` を `PlaMo_translate/vendor/ndlocr/` に配置してください（未配置または読込失敗時は日本語も `Tesseract.js` へフォールバックします）。
+- **エンジン設定**: [ndlocr_engine.js](ndlocr_engine.js) の `DET_MODEL_FILE`・`REC_SHORT.file`・`REC_MEDIUM.file` にて上記 `.int8.onnx` ファイルを読み込み、縦書き段組み・箇条書き結合・UI アイコン除去・読み順ソートを組み合わせて実行します。
 - **検証済み項目**:
   - `ort.wasm.min.js`（`numThreads: 1`）上での実画像 E2E 推論＆`NDL_CHARLIST` デコード正常動作
   - `node -c ndlocr_engine.js` / `node -c content.js` 構文エラーなし
-  - 全 7 ユニットテストスイート（`test_block_merging.js`, `test_cursor_svg.js`, `test_icon_filter.js`, `test_leading_icon_strip.js`, `test_newspaper_layout.js`, `test_ocr_routing.js`, `test_reading_order.js`）全件パス
+  - 全 12 ユニット＆契約テストスイート（`test_area_marquee_selection.js`, `test_block_delete_and_add_region.js`, `test_block_merging.js`, `test_bullet_splitting.js`, `test_cursor_svg.js`, `test_icon_filter.js`, `test_leading_icon_strip.js`, `test_newspaper_layout.js`, `test_ocr_routing.js`, `test_peek_hover.js`, `test_reading_order.js`, `test_toolbar_drag_and_clamp.js`）全件パス
+- **ライセンス・クレジット表記**:
+  - 元モデル・前処理仕様: 国立国会図書館（NDL Lab）[ndl-lab/ndlocr-lite](https://github.com/ndl-lab/ndlocr-lite)（[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)）
+  - **改変事項**: 単一スレッド WASM（`onnxruntime-web` v1.31.1, MIT License）向けに `DEIMv2` / `PARSeq` モデルへ INT8/FP16 量子化・グラフ書き換えを実施し、前後処理を [ndlocr_engine.js](ndlocr_engine.js) へ移植しています。
+  - レイアウト認識モデルのバックボーンには **DINOv3** 蒸留モデルが使われているため、モデル利用時は CC BY 4.0 に加え Meta **DINOv3 ライセンス** 等も適用されます（詳細は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を参照）。
 

@@ -6,7 +6,14 @@
  *   2. PARSeq  : text-line recognition (cascade) (vendor/ndlocr/parseq-ndl-24x{256,384}-*.int8.onnx)
  *
  * Pre/post-processing is ported from ndl-lab/ndlocr-lite (src/deim.py, src/parseq.py, src/ocr.py),
- * with crop margins tuned for tight DEIM boxes on small UI labels.
+ * with crop margins, reading-order sorting, and UI layout post-processing modified for browser WASM.
+ *
+ * Attribution & License (Adapted Work):
+ *   Original Work: NDLOCR-Lite by National Diet Library, Japan (https://github.com/ndl-lab/ndlocr-lite)
+ *   License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+ *            https://creativecommons.org/licenses/by/4.0/
+ *   (This file and vendor/ndlocr/ndl_charlist.js remain licensed under CC BY 4.0;
+ *    see THIRD_PARTY_NOTICES.md for details.)
  *
  * Requires (classic scripts loaded before this file):
  *   - vendor/ort/ort.wasm.min.js      -> global `ort`

@@ -1,10 +1,14 @@
-# PLaMo Translate (LM Studio & In-Browser Wllama)
+# PLaMo Translate (LM Studio & In-Browser Wllama) — v1.2.0
 
-English | [日本語](README.md)
+English | [日本語](README.md) · [📄 NDLOCR-Lite Quantization Notes](NDLOCR_QUANTIZATION.en.md)
 
 A privacy-first, zero-cloud-dependency Chrome extension (Manifest V3 / Vanilla JS) that brings Preferred Networks (PFN)'s state-of-the-art open-weight translation model **PLaMo 3 Translate (0.8B / 2B / 8B / 31B)** directly into your browser.
 
 Translate sensitive business documents, source code, and confidential text **100% locally on your machine with zero data leakage, high speed, and zero API costs**.
+
+> **🔍 Built-in High-Accuracy Japanese OCR: NDLOCR-Lite (v1.2.0+)**
+> For screenshot and image OCR translation, this extension embeds **NDLOCR-Lite**—an open-source OCR developed by the National Diet Library (NDL) of Japan—custom-quantized with an **INT8 / FP16 hybrid recipe** (<50 MB total) for `onnxruntime-web` WASM.
+> Recognize and translate Japanese vertical text, newspaper columns, and UI screenshots **100% locally in your browser with zero external API calls** ([📄 Read the Quantization & Optimization Notes](NDLOCR_QUANTIZATION.en.md)).
 
 ---
 
@@ -86,6 +90,7 @@ Easily selectable directly from the Settings panel:
    * Employs proactive token monitoring for PLaMo-3 termination markers (`</s>`, `<|plamo:tag|>`, etc.), immediately aborting inference the instant generation finishes. This completely eliminates idle runaway spin-loops up to `max_tokens`.
 2. **Persistent Chrome Side Panel & Full-Screen Tab**:
    * Clicking the toolbar icon opens the **Chrome Side Panel**, staying open beside your browser tabs so you can translate without losing context or interrupting your reading.
+   * Features a compact unified header combining the inference engine toggle (`LM Studio` / `In-Browser`) and status indicator, color-coded quick-action buttons (`Grab Selection`, `Area OCR`, `Translate Page`), and a top-expanding Settings drawer.
    * Seamlessly inspect source language detection, customize settings, or click **🗗** to open a full two-column widescreen workspace.
 3. **Resizable & Draggable Inline Translation Popover**:
    * Selecting text on any webpage displays a floating `🌐 PLaMo` button or instant popup.
@@ -110,6 +115,11 @@ Easily selectable directly from the Settings panel:
    * Automatically flips the target language to English when Japanese text is entered while target is set to Japanese (preserved as Japanese rewrite/refinement when specific styles like Polite, Plain, or Easy Japanese are selected).
 10. **Serialized Offscreen Queue**:
     * In Mode B, multiple paragraph translation requests are dispatched through a mutex queue to ensure KV cache stability and prevent memory race conditions.
+11. **100% Local Image & Screen-Area OCR Overlay Translation (NDLOCR-Lite + Tesseract.js)**:
+    * Integrates NDL Lab's **NDLOCR-Lite** (`DEIMv2` detection + `PARSeq` recognition) custom-quantized for single-threaded `onnxruntime-web` WASM (**-56.5% total size reduction to 49.80 MB across 3 models**), supporting vertical Japanese newspaper layouts (right-to-left column reading order), bulleted lists, and UI screenshots.
+    * Automatically routes English/multilingual images or fallbacks to bundled **Tesseract.js** (`jpn+eng` / `eng`).
+    * Interactive overlay controls include **Original ↔ Translation toggle**, **Peek Original (`👁`)**, **Editable Full-Text Drawer (`📑`)**, **Per-Block Delete (hover/right-click)**, **Append Region OCR (`➕`)**, and a **Draggable & Viewport-Clamped Toolbar** (prevents clipping on full-screen images and Chrome Side Panel resize).
+    * 👉 Full quantization benchmarks and technical write-up: **[NDLOCR-Lite ONNX Quantization & WASM Optimization Notes](NDLOCR_QUANTIZATION.en.md)**
 
 ---
 
@@ -133,6 +143,7 @@ All 53 languages officially supported by PLaMo 3 Translate, plus official **Easy
 2. Toggle on **Developer mode** in the top-right corner.
 3. Click **Load unpacked** in the top-left corner.
 4. Select the downloaded/cloned folder (`PlaMo_translate`).
+   * **Note for `git clone` setups (NDLOCR-Lite Models)**: Large ONNX binaries (`vendor/ndlocr/*.onnx`) are excluded via `.gitignore`. GitHub Release archives bundle them directly; if cloning from source and you want local NDLOCR-Lite Japanese OCR, download the 3 `.int8.onnx` model files from GitHub Releases into `PlaMo_translate/vendor/ndlocr/` (see [NDLOCR_QUANTIZATION.en.md](NDLOCR_QUANTIZATION.en.md); if omitted, OCR automatically falls back to Tesseract.js).
 5. Pin the **PLaMo Translate** icon to your browser toolbar.
 
 ---
@@ -187,6 +198,15 @@ For translating with heavier models on high-performance GPUs:
 - Bilingual translation blocks appear beneath each paragraph viewport-first.
 - Use the bottom-right floating control pill to **Hide/Show Original**, **Pause/Resume**, or **Restore** the page.
 
+### 4. Image & Screen-Area OCR Overlay Translation
+
+- **Direct Image Translation**: Hover over any image on a webpage and click the `🖼️ Translate Image` badge (or right-click the image).
+- **Multi-Region Area OCR**: Click **📷 Area OCR Translate** in the side panel (which stays open alongside the page), drag as many regions as needed (right-click any selection box to remove it), and confirm from the floating action bar.
+- **Interactive Overlay Toolbar**:
+  - **Draggable & Viewport-Clamped**: Grab any empty toolbar area to move it freely; automatic viewport clamping prevents clipping on full-screen images or when Chrome's Side Panel narrows the tab.
+  - **Toggle / Peek (`👁`) / Editable Drawer (`📑`)**: Switch between Original and Translation, peek at the underlying image, or edit & copy the combined full text.
+  - **Append Region (`➕`) & Block Delete**: Run extra OCR on missed regions or remove unwanted blocks via the hover delete button or right-click.
+
 ---
 
 ## PFML3 Prompt Specification
@@ -227,6 +247,8 @@ Access **⚙️ Settings** to configure:
 | **WebGPU Acceleration** | `ON` (Enabled) | Use WebGPU acceleration for Mode B (falls back to CPU WASM if unsupported) |
 | **Context Length (n_ctx)** | `2048` | Context window size for Mode B |
 | **In-Page Translation Mode** | `button` | `button` (icon on select), `instant` (immediate popover), `off` |
+| **Image Hover OCR Button** | `true` (Enabled) | Show the `🖼️` quick OCR button when hovering over images |
+| **Image OCR Engine** | `ndlocr` (Recommended) | `NDLOCR-Lite (High-accuracy Japanese / INT8 WASM)` or `Tesseract.js (Lightweight / English)` |
 | **Auto Ja↔En Switch** | `true` (Enabled) | Automatically flip target to English when input is Japanese |
 | **Temperature** | `0.0` | Output determinism (0.0 is best for translation fidelity) |
 | **Max Tokens** | `1024` | Maximum tokens generated per translation call |
@@ -254,7 +276,7 @@ Access **⚙️ Settings** to configure:
 
 ## Links & Credits
 
-* **Built with PLaMo**
+* **Built with PLaMo** · **Built with DINOv3** (NDLOCR-Lite layout detection backbone)
 * **Preferred Networks Tech Blog**:  
   [PLaMo 3 Translate Release & Engineering Insights](https://www.preferred.jp/ja/blog/tech/plamo-3-translate-weight-release)
 * **Hugging Face Model Repositories**:  
@@ -262,9 +284,23 @@ Access **⚙️ Settings** to configure:
   * [pfnet/plamo-3-translate-2b](https://huggingface.co/pfnet/plamo-3-translate-2b)
 * **@wllama/wllama Engine**:  
   [https://github.com/ngxson/wllama](https://github.com/ngxson/wllama)
-* **License**:
-  * Extension Code: [MIT License](LICENSE)
-  * PLaMo Translation Models: [PLaMo Community License](https://plamo.preferredai.jp/info/plamo-community-license-ja)
+* **OCR Engines & Quantization Docs**:
+  * [NDLOCR-Lite (National Diet Library / ndl-lab)](https://github.com/ndl-lab/ndlocr-lite)
+  * [Tesseract.js](https://github.com/naptha/tesseract.js) / [ONNX Runtime Web](https://onnxruntime.ai/)
+  * 📘 **[NDLOCR-Lite ONNX Quantization & WASM Optimization Notes (NDLOCR_QUANTIZATION.en.md)](NDLOCR_QUANTIZATION.en.md)**
+* **Licenses & Third-Party Notices**:
+  * Original Extension Code: [MIT License](LICENSE) *(adapted NDLOCR-Lite files such as `ndlocr_engine.js` and `vendor/ndlocr/ndl_charlist.js` remain governed by CC BY 4.0)*
+  * Full Third-Party License Texts & Notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+  * **@wllama/wllama (`v3.8.1`) / llama.cpp**: [MIT License](vendor/wllama/LICENCE) (`Copyright (c) 2024 Xuan Son NGUYEN`)
+  * **ONNX Runtime Web (`v1.31.1`)**: MIT License (`Copyright (c) Microsoft Corporation`)
+  * **Tesseract.js (`v5.1.1`) / tesseract.js-core**: Apache License 2.0 (full text included in [tesseract.min.js.LICENSE.txt](vendor/tesseract/tesseract.min.js.LICENSE.txt) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md))
+  * **NDLOCR-Lite (National Diet Library, Japan)**: [CC BY 4.0 (Creative Commons Attribution 4.0 International)](https://creativecommons.org/licenses/by/4.0/)
+    * Attribution: Original code and models by National Diet Library, Japan ([ndl-lab/ndlocr-lite](https://github.com/ndl-lab/ndlocr-lite)).
+    * **Modifications**: Ported pre/post-processing pipelines to browser JavaScript ([ndlocr_engine.js](ndlocr_engine.js)), extracted character vocabulary (`vendor/ndlocr/ndl_charlist.js`), and quantized `DEIMv2` / `PARSeq` models to INT8/FP16 for `onnxruntime-web` WASM ([NDLOCR_QUANTIZATION.en.md](NDLOCR_QUANTIZATION.en.md)).
+    * **Additional Terms (`Built with DINOv3`)**: Because the layout detection backbone relies on distilled **DINOv3** weights, usage and any redistribution of pretrained/quantized NDLOCR-Lite models are also subject to the Meta **[DINOv3 License](https://github.com/facebookresearch/dinov3/blob/main/LICENSE.md)** (include a full copy if bundling `.int8.onnx` weights in GitHub Releases) and `LICENCE_DEPENDENCIES` in `ndl-lab/ndlocr-lite`.
+  * **PLaMo Translation Models**: [PLaMo Community License](https://plamo.preferredai.jp/info/plamo-community-license-ja)
     * Free for personal, research, and non-commercial purposes without registration.
     * Entities with annual revenue under 1 billion JPY may use it for commercial purposes free of charge upon prior [registration](https://plamo.preferredai.jp/info/plamo-community-license-ja).
     * **Output Attribution Exemption (Article 5)**: Since PLaMo 3 Translate is classified as a "Transformation Model", users are **not required to attribute PLaMo on translation outputs**, allowing translated documents to be freely distributed in professional and business contexts.
+* **Development Partner / AI Assistant**:
+  * **Antigravity (Google Deepmind)**: Co-developed the extension architecture, browser porting and ONNX INT8/FP16 hybrid quantization of NDLOCR-Lite, UI/UX refinements, and technical documentation.

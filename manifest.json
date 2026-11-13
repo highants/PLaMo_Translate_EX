@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PLaMo Translate (LM Studio & Browser Wllama)",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "High-accuracy local translation extension powered by PFN PLaMo 3 Translate via LM Studio local API or In-Browser Wllama (0.8B WebGPU/WASM)",
   "permissions": [
     "storage",
