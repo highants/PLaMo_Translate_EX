@@ -28,3 +28,4 @@ vendor/ndlocr/*.onnx
 vendor/ort/*.jsep.*
 test_image.png
 
+vendor/*.zip
