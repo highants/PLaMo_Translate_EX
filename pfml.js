@@ -137,7 +137,10 @@ const DEFAULT_SETTINGS = {
   inlineDisplayMode: 'window', // 'window' | 'iframe' (Native Float Window or In-page OOPIF)
   enableImageHoverButton: true,
   ocrLang: 'auto',
-  ocrEngine: 'ndlocr', // 'ndlocr' (NDLOCR-Lite ONNX, default; falls back to Tesseract) | 'tesseract'
+  ocrEngine: 'ndlocr', // 'ndlocr' (NDLOCR-Lite V2.0 ONNX, default; falls back to Tesseract) | 'tesseract'
+  ocrCharacterInclusion: true, // NDLOCR-Lite V2.0: normalize variant/old kanji to modern forms (異体字包摂)
+  ocrEnableTcy: true, // NDLOCR-Lite V2.0: Tate-Chuu-Yoko horizontal-in-vertical recognition (縦中横)
+  ocrEnableTableStructure: true, // NDLOCR-Lite V2.0: TableCenterNet table structure recognition (表構造推定)
   popoverCustomWidth: 440,
   popoverCustomHeight: 0
 };

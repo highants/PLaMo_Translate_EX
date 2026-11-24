@@ -69,6 +69,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const settingInlineDisplayMode = document.getElementById('settingInlineDisplayMode');
   const settingImageHoverBtn = document.getElementById('settingImageHoverBtn');
   const settingOcrEngine = document.getElementById('settingOcrEngine');
+  const settingOcrCharacterInclusion = document.getElementById('settingOcrCharacterInclusion');
+  const settingOcrEnableTcy = document.getElementById('settingOcrEnableTcy');
+  const settingOcrEnableTableStructure = document.getElementById('settingOcrEnableTableStructure');
   const settingAutoSwitchJaEn = document.getElementById('settingAutoSwitchJaEn');
   const settingTemperature = document.getElementById('settingTemperature');
   const settingMaxTokens = document.getElementById('settingMaxTokens');
@@ -254,6 +257,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (settingOcrEngine) {
       settingOcrEngine.value = currentSettings.ocrEngine || 'ndlocr';
+    }
+    if (settingOcrCharacterInclusion) {
+      settingOcrCharacterInclusion.checked = currentSettings.ocrCharacterInclusion !== false;
+    }
+    if (settingOcrEnableTcy) {
+      settingOcrEnableTcy.checked = currentSettings.ocrEnableTcy !== false;
+    }
+    if (settingOcrEnableTableStructure) {
+      settingOcrEnableTableStructure.checked = currentSettings.ocrEnableTableStructure !== false;
     }
     settingAutoSwitchJaEn.checked = !!currentSettings.autoSwitchJaEn;
     settingTemperature.value = currentSettings.temperature !== undefined ? currentSettings.temperature : 0;
@@ -750,6 +762,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       inlineDisplayMode: settingInlineDisplayMode ? settingInlineDisplayMode.value : 'window',
       enableImageHoverButton: settingImageHoverBtn ? settingImageHoverBtn.checked : true,
       ocrEngine: settingOcrEngine ? settingOcrEngine.value : (currentSettings.ocrEngine || 'ndlocr'),
+      ocrCharacterInclusion: settingOcrCharacterInclusion ? settingOcrCharacterInclusion.checked : true,
+      ocrEnableTcy: settingOcrEnableTcy ? settingOcrEnableTcy.checked : true,
+      ocrEnableTableStructure: settingOcrEnableTableStructure ? settingOcrEnableTableStructure.checked : true,
       autoSwitchJaEn: settingAutoSwitchJaEn.checked,
       temperature: parseFloat(settingTemperature.value) || 0,
       maxTokens: parseInt(settingMaxTokens.value, 10) || 1024,

@@ -9,7 +9,7 @@ const assert = require('assert');
 const path = require('path');
 
 // 1. Extract isLikelyIconArtifactSegment from offscreen.js
-const offscreenSrc = fs.readFileSync(path.join(__dirname, 'offscreen.js'), 'utf8');
+const offscreenSrc = fs.readFileSync(path.join(__dirname, '..', 'offscreen.js'), 'utf8');
 const matchOffscreen = offscreenSrc.match(/(const ICON_NOISE_CHAR_REGEX[\s\S]*?function isLikelyIconArtifactSegment[\s\S]*?\n\})/);
 if (!matchOffscreen) {
   console.error('FAIL: Could not locate isLikelyIconArtifactSegment in offscreen.js');
@@ -21,7 +21,7 @@ vm.runInContext(matchOffscreen[1] + '\nglobalThis.isLikelyIconArtifactSegment = 
 const isLikelyIconArtifactSegment = sandboxOff.isLikelyIconArtifactSegment;
 
 // 2. Extract isNoiseText from ndlocr_engine.js
-const ndlSrc = fs.readFileSync(path.join(__dirname, 'ndlocr_engine.js'), 'utf8');
+const ndlSrc = fs.readFileSync(path.join(__dirname, '..', 'ndlocr_engine.js'), 'utf8');
 const matchNdl = ndlSrc.match(/(const VALID_ONE_LETTER_WORDS[\s\S]*?function isNoiseText[\s\S]*?\n  \})/);
 if (!matchNdl) {
   console.error('FAIL: Could not locate isNoiseText in ndlocr_engine.js');

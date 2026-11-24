@@ -7,7 +7,7 @@ const assert = require('assert');
 const path = require('path');
 
 // Load ndlocr_engine.js in sandbox
-const scriptPath = path.join(__dirname, 'ndlocr_engine.js');
+const scriptPath = path.join(__dirname, '..', 'ndlocr_engine.js');
 let code = fs.readFileSync(scriptPath, 'utf8');
 
 // Expose internal functions for unit testing

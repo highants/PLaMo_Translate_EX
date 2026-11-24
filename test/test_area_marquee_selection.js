@@ -7,9 +7,9 @@ const vm = require('vm');
 const path = require('path');
 const assert = require('assert');
 
-const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
-const contentCss = fs.readFileSync(path.join(__dirname, 'content.css'), 'utf8');
-const i18nSrc = fs.readFileSync(path.join(__dirname, 'i18n.js'), 'utf8');
+const contentSrc = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
+const contentCss = fs.readFileSync(path.join(__dirname, '..', 'content.css'), 'utf8');
+const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'i18n.js'), 'utf8');
 
 // ---------------------------------------------------------------------------
 // Extract geometry & perimeter sampling helpers from content.js into vm

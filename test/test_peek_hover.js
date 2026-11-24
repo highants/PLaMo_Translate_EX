@@ -6,8 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 
-const css = fs.readFileSync(path.join(__dirname, 'content.css'), 'utf8');
-const js = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+const css = fs.readFileSync(path.join(__dirname, '..', 'content.css'), 'utf8');
+const js = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
 
 let passCount = 0;
 let failCount = 0;

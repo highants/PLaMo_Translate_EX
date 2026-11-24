@@ -10,7 +10,7 @@ const assert = require('assert');
 const path = require('path');
 
 // 1. Extract OCR_LANG_MAP + resolveTesseractLangs and isLikelyEnglishText + runOcrRecognition from offscreen.js
-const offscreenSrc = fs.readFileSync(path.join(__dirname, 'offscreen.js'), 'utf8');
+const offscreenSrc = fs.readFileSync(path.join(__dirname, '..', 'offscreen.js'), 'utf8');
 
 const matchLangMap = offscreenSrc.match(
   /(const OCR_LANG_MAP\s*=\s*\{[\s\S]*?function resolveTesseractLangs\([\s\S]*?\n\})/
@@ -237,7 +237,7 @@ async function main() {
 
   // --- TEST SET 4: i18n.js and content.js UI assertions ---
   await runTest('4a. i18n.js (ja & en) OCR language options include model names (NDLOCR-Lite or Tesseract)', () => {
-    const i18nSrc = fs.readFileSync(path.join(__dirname, 'i18n.js'), 'utf8');
+    const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'i18n.js'), 'utf8');
     const i18nModule = { exports: {} };
     const i18nSandbox = { module: i18nModule, exports: i18nModule.exports };
     vm.createContext(i18nSandbox);
@@ -258,7 +258,7 @@ async function main() {
   });
 
   await runTest('4b. content.js includes value="ja-tesseract"', () => {
-    const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+    const contentSrc = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
     assert.ok(
       contentSrc.includes('value="ja-tesseract"'),
       'content.js must include value="ja-tesseract"'
@@ -267,8 +267,8 @@ async function main() {
 
   // --- TEST SET 5: Source language resolution (preventing NDLOCR-Lite ZH->EN misclassification) ---
   await runTest('5a. background.js resolveDetectedLanguage overrides CLD "zh" to "ja" when text contains kana', async () => {
-    const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
-    const pfmlSrc = fs.readFileSync(path.join(__dirname, 'pfml.js'), 'utf8');
+    const bgSrc = fs.readFileSync(path.join(__dirname, '..', 'background.js'), 'utf8');
+    const pfmlSrc = fs.readFileSync(path.join(__dirname, '..', 'pfml.js'), 'utf8');
     const fnMatch = bgSrc.match(/(async function resolveDetectedLanguage\([\s\S]*?\r?\n\})/);
     assert.ok(fnMatch, 'Could not extract resolveDetectedLanguage from background.js');
 
@@ -293,7 +293,7 @@ async function main() {
   });
 
   await runTest('5b. content.js resolves overlay sourceLang to "ja" for NDLOCR-Lite / CJK blocks and aggregates pairCounts', () => {
-    const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+    const contentSrc = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
     const helperMatch = contentSrc.match(
       /const KANA_LETTER_REGEX = (\/[\s\S]*?\/);[\s\S]*?const CJK_SCRIPT_REGEX = (\/[\s\S]*?\/);[\s\S]*?(function resolveOverlaySourceLang\([\s\S]*?\r?\n\s{4}\})/
     );
@@ -336,7 +336,7 @@ async function main() {
 
   // --- TEST SET 6: Sidebar/Popup layout & keep-open contracts ---
   await runTest('6a. popup.js keeps sidebar open when triggering Area OCR translation (no window.close)', () => {
-    const popupJs = fs.readFileSync(path.join(__dirname, 'popup.js'), 'utf8');
+    const popupJs = fs.readFileSync(path.join(__dirname, '..', 'popup.js'), 'utf8');
     const ocrBlockMatch = popupJs.match(/if\s*\(\s*btnAreaOcrTranslate\s*\)\s*\{([\s\S]*?)\r?\n\s{2}\}/);
     assert.ok(ocrBlockMatch, 'Could not locate btnAreaOcrTranslate handler in popup.js');
     assert.ok(
@@ -350,7 +350,7 @@ async function main() {
   });
 
   await runTest('6b. popup.html places engine-mode-pills next to header-status and btnAreaOcrTranslate directly right of btnGrabSelection', () => {
-    const popupHtml = fs.readFileSync(path.join(__dirname, 'popup.html'), 'utf8');
+    const popupHtml = fs.readFileSync(path.join(__dirname, '..', 'popup.html'), 'utf8');
     const headerRowMatch = popupHtml.match(/<div class="header-engine-row">([\s\S]*?)<\/div>\s*<\/header>/);
     assert.ok(headerRowMatch, 'popup.html must define .header-engine-row inside header');
     assert.ok(headerRowMatch[1].includes('class="engine-mode-pills"'), '.header-engine-row must contain .engine-mode-pills');
@@ -366,7 +366,7 @@ async function main() {
   });
 
   await runTest('6c. popup.html places #settingsPanel at top right after header (before quick-tools-bar & main)', () => {
-    const popupHtml = fs.readFileSync(path.join(__dirname, 'popup.html'), 'utf8');
+    const popupHtml = fs.readFileSync(path.join(__dirname, '..', 'popup.html'), 'utf8');
     const headerEndIdx = popupHtml.indexOf('</header>');
     const settingsIdx = popupHtml.indexOf('id="settingsPanel"');
     const toolsIdx = popupHtml.indexOf('class="quick-tools-bar"');
@@ -377,8 +377,8 @@ async function main() {
   });
 
   await runTest('6d. quick-tools-bar buttons have distinct color variant classes and light/dark styles', () => {
-    const popupHtml = fs.readFileSync(path.join(__dirname, 'popup.html'), 'utf8');
-    const popupCss = fs.readFileSync(path.join(__dirname, 'popup.css'), 'utf8');
+    const popupHtml = fs.readFileSync(path.join(__dirname, '..', 'popup.html'), 'utf8');
+    const popupCss = fs.readFileSync(path.join(__dirname, '..', 'popup.css'), 'utf8');
     assert.match(popupHtml, /id="btnGrabSelection"[^>]*class="[^"]*\bbtn-tool-selection\b/);
     assert.match(popupHtml, /id="btnAreaOcrTranslate"[^>]*class="[^"]*\bbtn-tool-ocr\b/);
     assert.match(popupHtml, /id="btnPageTranslate"[^>]*class="[^"]*\bbtn-tool-page\b/);

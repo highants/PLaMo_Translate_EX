@@ -7,7 +7,7 @@ const assert = require('assert');
 const path = require('path');
 
 // Read offscreen.js and extract the merging logic and regex constants
-const offscreenPath = path.join(__dirname, 'offscreen.js');
+const offscreenPath = path.join(__dirname, '..', 'offscreen.js');
 const src = fs.readFileSync(offscreenPath, 'utf8');
 
 const regexAndFuncMatch = src.match(/(const CJK_CHAR_REGEX[\s\S]*?function mergeProseLinesIfAppropriate[\s\S]*?\n\})/);

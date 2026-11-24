@@ -281,7 +281,11 @@
   }
 
   // Listen for messages from popover.html iframe
+  const extensionOrigin = (() => {
+    try { return new URL(chrome.runtime.getURL('')).origin; } catch { return ''; }
+  })();
   window.addEventListener('message', (e) => {
+    if (!popoverCardEl || !extensionOrigin || e.source !== popoverCardEl.contentWindow || e.origin !== extensionOrigin) return;
     if (!e.data || typeof e.data !== 'object') return;
     if (e.data.type === 'PLAMO_RESIZE') {
       if (popoverCardEl && typeof e.data.height === 'number') {
@@ -1287,6 +1291,7 @@
     let isPeekingOriginal = false;
     let isShowingOriginalText = false;
     let currentBoxItems = [];
+    let currentTables = [];
     let nextBoxIdx = 0;
     let aborted = false;
     let editedOriginalText = null;
@@ -1294,10 +1299,40 @@
 
     const toolbarEl = container.querySelector('.plamo-ext-img-ov-toolbar');
 
-    const getActiveOriginalText = () => currentBoxItems
-      .filter(it => it && !it.deleted && it.blk && it.blk.text)
-      .map(it => it.blk.text)
-      .join('\n');
+    const getActiveOriginalText = () => {
+      const activeItems = currentBoxItems.filter(it => it && !it.deleted && it.blk && it.blk.text);
+      if (activeItems.length === 0) return '';
+      if (!Array.isArray(currentTables) || currentTables.length === 0) {
+        return activeItems.map(it => it.blk.text).join('\n');
+      }
+      // Replace raw table-cell blocks inside detected TableCenterNet regions with structured Markdown tables
+      const insertedTables = new Set();
+      const out = [];
+      for (const it of activeItems) {
+        const b = it.blk.bbox;
+        let matchedTableIdx = -1;
+        if (b && !it.isAppendedRegion) {
+          const cx = (b.x0 + b.x1) * 0.5;
+          const cy = (b.y0 + b.y1) * 0.5;
+          for (let ti = 0; ti < currentTables.length; ti++) {
+            const tb = currentTables[ti] && currentTables[ti].bbox;
+            if (tb && currentTables[ti].markdown && cx >= tb.x0 && cx <= tb.x1 && cy >= tb.y0 && cy <= tb.y1) {
+              matchedTableIdx = ti;
+              break;
+            }
+          }
+        }
+        if (matchedTableIdx !== -1) {
+          if (!insertedTables.has(matchedTableIdx)) {
+            insertedTables.add(matchedTableIdx);
+            out.push(currentTables[matchedTableIdx].markdown);
+          }
+        } else {
+          out.push(it.blk.text);
+        }
+      }
+      return out.join('\n\n');
+    };
 
     const getActiveTranslatedText = () => {
       const joined = currentBoxItems
@@ -1434,7 +1469,7 @@
         if (e && typeof e.pointerId === 'number' && toolbarEl.releasePointerCapture) {
           try {
             toolbarEl.releasePointerCapture(e.pointerId);
-          } catch {}
+          } catch { }
         }
       }
     };
@@ -1457,7 +1492,7 @@
         if (dragPointerId !== null && toolbarEl.setPointerCapture) {
           try {
             toolbarEl.setPointerCapture(dragPointerId);
-          } catch {}
+          } catch { }
         }
         e.preventDefault();
         e.stopPropagation();
@@ -1819,22 +1854,27 @@
         if (aborted) return;
 
         const effectiveReqLang = langToUse || activeOcrLang || 'auto';
+        currentTables = [];
         const ocrRes = await chrome.runtime.sendMessage({
           type: 'OCR_RECOGNIZE_IMAGE',
           imageDataUrl,
           ocrLang: effectiveReqLang,
-          ocrEngine: currentSettings.ocrEngine || 'ndlocr'
+          ocrEngine: currentSettings.ocrEngine || 'ndlocr',
+          characterInclusion: currentSettings.ocrCharacterInclusion !== false,
+          enableTcy: currentSettings.ocrEnableTcy !== false,
+          enableTableStructure: currentSettings.ocrEnableTableStructure !== false
         });
         if (aborted) return;
 
         if (!ocrRes || !ocrRes.ok) {
           throw new Error((ocrRes && ocrRes.error) || t('ocrStatusError'));
         }
+        currentTables = Array.isArray(ocrRes.tables) ? ocrRes.tables : [];
 
         lastOcrDetectedLang = ocrRes.detectedOcrLang || '';
         if (ocrRes.detectedOcrLang && langSelect) {
-          if ((effectiveReqLang === 'auto' && ocrRes.detectedOcrLang === 'en') ||
-              (effectiveReqLang === 'ja' && ocrRes.detectedOcrLang === 'ja-tesseract')) {
+          if ((effectiveReqLang === 'auto' && ocrRes.detectedOcrLang === 'en' && ocrRes.engine === 'tesseract') ||
+            (effectiveReqLang === 'ja' && ocrRes.detectedOcrLang === 'ja-tesseract')) {
             activeOcrLang = ocrRes.detectedOcrLang;
             langSelect.value = ocrRes.detectedOcrLang;
           }
@@ -2210,7 +2250,10 @@
               imageDataUrl: regionDataUrl,
               ocrLang: effectiveReqLang,
               ocrEngine: currentSettings.ocrEngine || 'ndlocr',
-              singleBlock: true
+              singleBlock: true,
+              characterInclusion: currentSettings.ocrCharacterInclusion !== false,
+              enableTcy: currentSettings.ocrEnableTcy !== false,
+              enableTableStructure: false
             });
             if (aborted || newItem.deleted) return;
 
@@ -2230,6 +2273,7 @@
             }
 
             const isMultiLine = cleanText.includes('\n') || Boolean(firstBlock && firstBlock.isMultiLine) || viewportRect.height > 38;
+            newItem.isAppendedRegion = true;
             newItem.blk = {
               ...(firstBlock || {}),
               text: cleanText,

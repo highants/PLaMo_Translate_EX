@@ -1,4 +1,4 @@
-# PLaMo Translate (LM Studio & ブラウザ内蔵 Wllama) — v1.2.0
+# PLaMo Translate (LM Studio & ブラウザ内蔵 Wllama) — v1.3.0
 
 [English](README.en.md) | 日本語 · [📄 NDLOCR-Lite 量子化・最適化解説](NDLOCR_QUANTIZATION.md)
 
@@ -6,9 +6,9 @@ Preferred Networks (PFN) がオープンウェイトとして公開した、世�
 
 外部の有償クラウド翻訳 API（Google Cloud Translation, DeepL 等）へのデータ送信を一切行わず、**完全ローカル環境で機密データや社内ドキュメントを安全・高速・無制限に翻訳**できます。
 
-> **🔍 高精度な日本語 OCR「NDLOCR-Lite」をブラウザ内蔵（v1.2.0〜）**
-> 本拡張機能のスクリーンショット・画像 OCR 翻訳では、国立国会図書館（NDL）が開発したオープンソース OCR **「NDLOCR-Lite」** をベースに、ブラウザ（`onnxruntime-web` WASM）向けに独自に **INT8 / FP16 ハイブリッド量子化**（合計 50 MB 未満）を施したモデルを内蔵しています。
-> 日本語の縦書き・新聞の段組み・UI スクリーンショット内のテキストを、外部サーバーへ送信することなく **100% ローカル環境で高精度に認識・翻訳**できます（[📄 量子化・最適化の詳細解説はこちら](NDLOCR_QUANTIZATION.md)）。
+> **🔍 高精度な日英・手書き・表対応 OCR「NDLOCR-Lite v2.0」をブラウザ内蔵**
+> 本拡張機能のスクリーンショット・画像 OCR 翻訳では、国立国会図書館（NDL）が公開した最新の **「NDLOCR-Lite v2.0」**（`DEIMv2` + `PARSeq` + 遅延ロード `TableCenterNet`）をブラウザ（`onnxruntime-web` WASM）向けに独自に **INT8 / FP16 ハイブリッド量子化**（コア 3 モデル計 **48.83 MB** / 表構造モデル込み **63.22 MB**）して内蔵しています。
+> 日本語の縦書き・新聞段組み・手書き文字・英文・**異体字包摂（旧字体→新字体変換）**・**縦中横**・**表構造 Markdown 出力**を、外部サーバーへ送信することなく **100% ローカル環境で高精度に認識・翻訳**できます（[📄 量子化・最適化の詳細解説はこちら](NDLOCR_QUANTIZATION.md)）。
 
 ---
 
@@ -115,11 +115,12 @@ PFN から公開されている全モデルサイズ、および各種量子化 
    - 翻訳先が「日本語」の状態で日本語の文章を入力すると、自動的に「英語」への翻訳に切り替わります（「丁寧語」「常体」「やさしい日本語」などの文体を指定した場合は、日本語の文章リライト・推敲用途として維持されます）。
 10. **オフスクリーン並行制御 & 排他キュー**:
     - モードB では Offscreen Document を活用し、複数段落の並行翻訳リクエストも KV キャッシュの衝突を防ぐ排他キュー（Mutex）により安定処理します。
-11. **完全ローカル 画像・画面範囲 OCR オーバーレイ翻訳（NDLOCR-Lite + Tesseract.js）**:
-    - 国立国会図書館 **NDLOCR-Lite**（`DEIMv2` 検出 + `PARSeq` 認識）をブラウザ内 `onnxruntime-web` WASM 向けに約 **56.5% 削減（3モデル計 49.80 MB）** へハイブリッド量子化・高速化して搭載。日本語の縦書き段組み（右から左の読み順）・横書き段落・箇条書き・UI スクリーンショットを高精度に構造化抽出します。
-    - 英語や多言語画像、またはテキスト検出内容に応じて **Tesseract.js** へ自動ルーティング／フォールバックします。
-    - オーバーレイ上では **原文↔翻訳トグル**、**元画像チラ見 (`👁`)**、**編集可能な全文テキストドロワー (`📑`)**、**個別ブロック削除（ボタン／右クリック）**、**追加領域 OCR (`➕`)**、および **ドラッグ移動＋全画面／サイドバー見切れ防止クランプ対応ツールバー** を備えています。
-    - 👉 量子化アルゴリズム・ベンチマーク・注意点の詳細: **[NDLOCR-Lite ONNX モデル量子化・最適化解説 (NDLOCR_QUANTIZATION.md)](NDLOCR_QUANTIZATION.md)**
+11. **完全ローカル 画像・画面範囲 OCR オーバーレイ翻訳（NDLOCR-Lite v2.0 + Tesseract.js）**:
+    - 国立国会図書館 **NDLOCR-Lite v2.0**（`DEIMv2` 検出 + `PARSeq` 認識 + 遅延ロード `TableCenterNet` 表構造推定）をブラウザ内 `onnxruntime-web` WASM 向けに最適化搭載（コア 3 モデル計 **48.83 MB / -57.5%**、表構造モデル込み **63.22 MB / -55.9%**）。日本語縦書き段組み・手書き文字・英文・箇条書き・UI スクリーンショット・表組を高精度に構造化抽出します。
+    - **V2.0 新機能**: **異体字包摂（旧字体→新字体自動変換、初期 ON）**、**縦中横（新聞等の縦書き内横数字）**、**表構造認識（TableCenterNet による Markdown 表出力）**、および `PARSeq-768` を同梱せずに長文行を高精度認識する**空白分割アルゴリズム**・**英文 1 パス高速処理**を搭載（設定パネルから個別 ON/OFF 可能）。
+    - 多言語画像や低信頼度フォールバック時には同梱の **Tesseract.js** へ自動切り替えします。
+    - オーバーレイ上では **原文↔翻訳トグル**、**元画像チラ見 (`👁`)**、**編集可能な全文テキストドロワー (`📑`・Markdown 表出力対応)**、**個別ブロック削除（ボタン／右クリック）**、**追加領域 OCR (`➕`)**、および **ドラッグ移動＋全画面／サイドバー見切れ防止クランプ対応ツールバー** を備えています。
+    - 👉 量子化アルゴリズム・ベンチマーク・注意点の詳細: **[NDLOCR-Lite V2.0 ONNX モデル量子化・最適化解説 (NDLOCR_QUANTIZATION.md)](NDLOCR_QUANTIZATION.md)**
 
 ---
 
@@ -143,7 +144,7 @@ PLaMo 3 Translate が公式対応している 53 言語および「やさしい�
 2. 画面右上の「**デベロッパー モード**」のスイッチを **ON** にします。
 3. 画面左上に現れる「**パッケージ化されていない拡張機能を読み込む**」ボタンをクリックします。
 4. ダウンロードまたはクローンした本フォルダ（`PlaMo_translate`）を選択します。
-   - **※ GitHub からソースをクローン (`git clone`) した場合の NDLOCR-Lite モデル配置**: `.gitignore` により大容量バイナリ（`vendor/ndlocr/*.onnx`）はリポジトリ追跡から除外されています。GitHub Releases の配布 ZIP には同梱済みですが、クローン環境で NDLOCR-Lite（高精度日本語 OCR）を使う場合は、Releases から取得した `.int8.onnx` ファイル 3 点を `PlaMo_translate/vendor/ndlocr/` に配置してください（詳細は [NDLOCR_QUANTIZATION.md](NDLOCR_QUANTIZATION.md) を参照。未配置時は Tesseract.js へ自動フォールバックします）。
+   - **※ GitHub からソースをクローン (`git clone`) した場合の NDLOCR-Lite V2.0 モデル配置**: `.gitignore` により大容量バイナリ（`vendor/ndlocr/*.onnx`）はリポジトリ追跡から除外されています。GitHub Releases の配布 ZIP（`ndlocr.zip`）には同梱済みですので、クローン環境で NDLOCR-Lite V2.0 を使う場合は `ndlocr.zip` を展開して量子化モデル 4 点（`deim-s-1024x1024-261124.int8.onnx`, `parseq-ndl-24x256-30-tiny-499epoch-261124.int8.onnx`, `parseq-ndl-24x384-50-tiny-278epoch-261124.int8.onnx`, `tablecenternet_s_800_v3.fp16.onnx`）および `LICENSE.md` を `PlaMo_translate/vendor/ndlocr/` に配置してください（詳細は [NDLOCR_QUANTIZATION.md](NDLOCR_QUANTIZATION.md) を参照。未配置時は Tesseract.js へ自動フォールバックします）。
 5. ツールバーに「**PLaMo Translate**」のアイコンが表示されたらインストール完了です。ピン留めしておくと便利です。
 
 ---
@@ -248,6 +249,9 @@ PLaMo 3 Translate が公式対応している 53 言語および「やさしい�
 | **選択テキスト翻訳モード** | `button` (アイコン表示) | `button` (ボタン押下で表示), `instant` (即座に表示), `off` |
 | **画像ホバー翻訳ボタン** | `true` (有効) | 画像ホバー時に「🖼️ 画像翻訳」ボタンを表示する |
 | **画像翻訳 OCR エンジン** | `ndlocr` (推奨) | `NDLOCR-Lite (日本語高精度 / INT8 WASM)` または `Tesseract.js (軽量・英語向け)` |
+| **異体字包摂（旧字体→新字体）** | `true` (有効) | NDLOCR-Lite V2.0 の 4,905 件の辞書により旧字体・異体字を新字体へ自動変換 |
+| **縦中横の認識補正** | `true` (有効) | 縦書きテキスト内の横向き数字・英記号（縦中横）を自動検出・補正 |
+| **表構造認識（TableCenterNet）** | `true` (有効) | 表領域を検出した場合のみ遅延ロードし、Markdown 表としてドロワーへ出力 |
 | **日英自動切替** | `true` (有効) | 日本語入力時に翻訳先を英語へ自動反転 |
 | **Temperature** | `0.0` | 翻訳の決定論性（0 が最も安定的かつ高精度） |
 | **Max Tokens** | `1024` | 一度の生成で出力可能な最大トークン数 |
@@ -273,8 +277,32 @@ PLaMo 3 Translate が公式対応している 53 言語および「やさしい�
 
 ---
 
+## 権限とプライバシー
+
+本拡張機能は完全ローカル処理であり、選択テキスト・ページ本文・スクリーンショット画像を外部クラウドサーバーへ送信・保存することはありません。`manifest.json` の各権限は以下の用途にのみ使用します：
+
+- `storage`: 設定値（エンジン選択、UI 言語、用語集など）のローカル保存
+- `contextMenus` / `sidePanel`: 右クリック翻訳メニューおよび常駐サイドパネルの提供
+- `activeTab` / `scripting`: 範囲選択 OCR キャプチャおよびページ翻訳の実行
+- `offscreen`: ブラウザ内蔵推論（Wllama / NDLOCR-Lite / Tesseract.js）の専用 WASM/WebGPU 実行環境
+- `<all_urls>` / `http://localhost/*`: 任意 Web ページでのインライン・全体翻訳、クロスオリジン画像の `credentials: 'omit'` OCR 取得、およびローカル LM Studio サーバーとの通信
+- ※ Mode B で初回のみ Hugging Face（`pfnet/plamo-3-translate-0.8b-GGUF`）から GGUF モデルを取得し、ブラウザの OPFS へキャッシュします。
+
+## テストの実行
+
+Node.js 環境で `test/` 配下の全ユニット＆契約テストスイート（13 本）を実行できます：
+
+```bash
+for f in test/test_*.js; do node "$f" || exit 1; done
+```
+
+---
+
 ## 関連リンク・クレジット
 
+- **監督**: highants
+- **開発**: Antigravity (Google Deepmind)
+- **ライセンス**: [MIT License](LICENSE)（※`ndlocr_engine.js`, `tablecenternet_engine.js`, `vendor/ndlocr/ndl_charlist.js`, `vendor/ndlocr/ndl_character_inclusion.js` など NDLOCR-Lite 由来の移植・抽出ファイルは元の **CC BY 4.0** 条件に従います）
 - **Built with PLaMo** / **Built with DINOv3**（NDLOCR-Lite レイアウト検出モデルバックボーン）
 - **Preferred Networks 公式テックブログ**:  
   [PLaMo 3 Translate：世界最高クラスの翻訳特化LLMの重み公開と開発秘話](https://www.preferred.jp/ja/blog/tech/plamo-3-translate-weight-release)
@@ -286,20 +314,17 @@ PLaMo 3 Translate が公式対応している 53 言語および「やさしい�
 - **OCR エンジン・量子化技術資料**:
   - [NDLOCR-Lite (国立国会図書館 / ndl-lab)](https://github.com/ndl-lab/ndlocr-lite)
   - [Tesseract.js](https://github.com/naptha/tesseract.js) / [ONNX Runtime Web](https://onnxruntime.ai/)
-  - 📘 **[NDLOCR-Lite ONNX モデル量子化・最適化 知見まとめ (NDLOCR_QUANTIZATION.md)](NDLOCR_QUANTIZATION.md)**
-- **ライセンス・サードパーティ表記**:
-  - 本拡張機能オリジナルコード: [MIT License](LICENSE)（※`ndlocr_engine.js` および `vendor/ndlocr/ndl_charlist.js` など NDLOCR-Lite 由来の移植・抽出ファイルは元の **CC BY 4.0** 条件に従います）
+  - 📘 **[NDLOCR-Lite V2.0 ONNX モデル量子化・最適化 知見まとめ (NDLOCR_QUANTIZATION.md)](NDLOCR_QUANTIZATION.md)**
+- **サードパーティ表記・詳細ライセンス**:
   - サードパーティ表記一覧: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
   - **@wllama/wllama (`v3.8.1`) / llama.cpp**: [MIT License](vendor/wllama/LICENCE) (`Copyright (c) 2024 Xuan Son NGUYEN`)
   - **ONNX Runtime Web (`v1.31.1`)**: MIT License (`Copyright (c) Microsoft Corporation`)
   - **Tesseract.js (`v5.1.1`) / tesseract.js-core**: Apache License 2.0（[tesseract.min.js.LICENSE.txt](vendor/tesseract/tesseract.min.js.LICENSE.txt) および [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) に全文収録）
   - **NDLOCR-Lite（国立国会図書館 / NDL Lab）**: [CC BY 4.0（クリエイティブ・コモンズ 表示 4.0 国際）](https://creativecommons.org/licenses/by/4.0/)
-    - 原著作物: [ndl-lab/ndlocr-lite](https://github.com/ndl-lab/ndlocr-lite)（国立国会図書館 / National Diet Library, Japan）
-    - **改変内容の明記**: 前後処理の JavaScript 移植（[ndlocr_engine.js](ndlocr_engine.js)）、文字リスト抽出（`vendor/ndlocr/ndl_charlist.js`）、および `onnxruntime-web` WASM 向けの INT8/FP16 ハイブリッド量子化（[NDLOCR_QUANTIZATION.md](NDLOCR_QUANTIZATION.md)）を行っています。
+    - 原著作物: [ndl-lab/ndlocr-lite](https://github.com/ndl-lab/ndlocr-lite) v2.0.0（国立国会図書館 / National Diet Library, Japan）
+    - **改変内容の明記**: 前後処理・表構造認識の JavaScript 移植（[ndlocr_engine.js](ndlocr_engine.js), [tablecenternet_engine.js](tablecenternet_engine.js)）、文字リスト・異体字包摂辞書の抽出（`vendor/ndlocr/ndl_charlist.js`, `vendor/ndlocr/ndl_character_inclusion.js`）、および `onnxruntime-web` WASM 向けの INT8/FP16 ハイブリッド量子化（[NDLOCR_QUANTIZATION.md](NDLOCR_QUANTIZATION.md)）を行っています。
     - **追加注意事項 (`Built with DINOv3`)**: レイアウト検出バックボーンに DINOv3 蒸留モデルを使用しているため、学習済み／量子化モデルの利用・再配布にあたっては Meta **[DINOv3 License](https://github.com/facebookresearch/dinov3/blob/main/LICENSE.md)**（Releases 等でモデルを配布する場合は同ライセンス全文の同梱が必要）および元リポジトリの `LICENCE_DEPENDENCIES` も遵守対象となります。
   - **翻訳モデル（PLaMo 3 Translate）**: [PLaMoコミュニティライセンス](https://plamo.preferredai.jp/info/plamo-community-license-ja)
     - 研究・学習・個人的な趣味利用は無償・事前登録不要です。
     - 直近事業年度の売上高・収入が10億円以下の企業・個人は、PFN指定の[事前登録](https://plamo.preferredai.jp/info/plamo-community-license-ja)を行うことで無償で商用利用（社内利用・業務利用）が可能です（10億円超の場合は別途商用契約が必要）。
     - **生成物の利用特例（第5条）**: PLaMo 3 Translate は「変換モデル」に該当するため、本拡張機能によって出力された翻訳結果（生成物）を公表・社外利用する際、PLaMo のクレジット表記を行う義務はありません（業務文書や公開資料等にそのまま活用可能）。
-- **開発協力 / AI パートナー**:
-  - **Antigravity (Google Deepmind)**: 本拡張機能の設計・実装、NDLOCR-Lite のブラウザ移植および ONNX INT8/FP16 ハイブリッド量子化、UI/UX 改善、各種ドキュメント整備における開発パートナーとして協力。

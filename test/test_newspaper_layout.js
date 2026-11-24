@@ -10,7 +10,7 @@ const assert = require('assert');
 const path = require('path');
 
 // Extract mergeVerticalProseLinesIfAppropriate from offscreen.js
-const offscreenSrc = fs.readFileSync(path.join(__dirname, 'offscreen.js'), 'utf8');
+const offscreenSrc = fs.readFileSync(path.join(__dirname, '..', 'offscreen.js'), 'utf8');
 const match = offscreenSrc.match(/(function mergeVerticalProseLinesIfAppropriate[\s\S]*?\n\})/);
 if (!match) {
   console.error('FAIL: Could not locate mergeVerticalProseLinesIfAppropriate in offscreen.js');

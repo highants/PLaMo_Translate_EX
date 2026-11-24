@@ -10,7 +10,7 @@ const path = require('path');
 // ---------------------------------------------------------------------------
 // 1. Load ndlocr_engine.js into a vm sandbox (no chrome mock needed)
 // ---------------------------------------------------------------------------
-const ndlEnginePath = path.join(__dirname, 'ndlocr_engine.js');
+const ndlEnginePath = path.join(__dirname, '..', 'ndlocr_engine.js');
 const ndlSrc = fs.readFileSync(ndlEnginePath, 'utf8');
 
 const ndlSandbox = {
@@ -36,7 +36,7 @@ if (!NdlOcrEngine || typeof NdlOcrEngine.detectVisualBulletLeftOfLine !== 'funct
 // ---------------------------------------------------------------------------
 // 2. Extract segmentation & merging functions from offscreen.js into a vm sandbox
 // ---------------------------------------------------------------------------
-const offscreenPath = path.join(__dirname, 'offscreen.js');
+const offscreenPath = path.join(__dirname, '..', 'offscreen.js');
 const offscreenSrc = fs.readFileSync(offscreenPath, 'utf8');
 
 const extractMatch = offscreenSrc.match(

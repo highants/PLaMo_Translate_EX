@@ -9,11 +9,11 @@ const vm = require('vm');
 const assert = require('assert');
 const path = require('path');
 
-const offscreenSrc = fs.readFileSync(path.join(__dirname, 'offscreen.js'), 'utf8');
-const backgroundSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
-const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
-const contentCss = fs.readFileSync(path.join(__dirname, 'content.css'), 'utf8');
-const i18nSrc = fs.readFileSync(path.join(__dirname, 'i18n.js'), 'utf8');
+const offscreenSrc = fs.readFileSync(path.join(__dirname, '..', 'offscreen.js'), 'utf8');
+const backgroundSrc = fs.readFileSync(path.join(__dirname, '..', 'background.js'), 'utf8');
+const contentSrc = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
+const contentCss = fs.readFileSync(path.join(__dirname, '..', 'content.css'), 'utf8');
+const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'i18n.js'), 'utf8');
 
 // ---------------------------------------------------------------------------
 // Extract OCR_LANG_MAP..resolveTesseractLangs and isLikelyEnglishText..runOcrRecognition

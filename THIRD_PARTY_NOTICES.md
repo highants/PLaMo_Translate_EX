@@ -11,14 +11,14 @@ This extension (`PlaMo_translate`) bundles or builds upon the following third-pa
 - **License**: **Creative Commons Attribution 4.0 International (CC BY 4.0)**  
   https://creativecommons.org/licenses/by/4.0/
 - **Summary of Modifications Made in This Project**:
-  - Ported layout detection (`deim.py`) and text recognition (`parseq.py`, `ocr.py`) pre/post-processing pipelines to browser JavaScript in `ndlocr_engine.js`, with crop-margin, reading-order, and UI-text layout post-processing enhancements.
-  - Extracted the character vocabulary from `NDLmoji.yaml` into `vendor/ndlocr/ndl_charlist.js`.
-  - Applied INT8 / FP16 hybrid quantization and ONNX graph optimizations to the `DEIMv2` and `PARSeq` models (`vendor/ndlocr/*.int8.onnx`) for single-threaded `onnxruntime-web` WASM execution (documented in `NDLOCR_QUANTIZATION.md` / `NDLOCR_QUANTIZATION.en.md`).
+  - Ported layout detection (`deim.py`), text recognition (`parseq.py`, `ocr.py`), variant character normalization (`character_inclusion.py`), Tate-Chuu-Yoko handling (`tcy_wrapper.py`), and table structure recognition (`tablecenternet.py`) from **NDLOCR-Lite v2.0.0** to browser JavaScript in `ndlocr_engine.js` and `tablecenternet_engine.js`, with crop-margin, long-line whitespace splitting, reading-order, and UI-text layout post-processing enhancements.
+  - Extracted the character vocabulary from `NDLmoji.yaml` into `vendor/ndlocr/ndl_charlist.js` and the variant character inclusion dictionary from `src/config/character_inclusion_mapping.csv` (originating from `ndl-lab/tugidigi-web`'s `jd_book.json`) into `vendor/ndlocr/ndl_character_inclusion.js`.
+  - Applied INT8 / FP16 hybrid quantization and ONNX graph optimizations to the V2.0 `DEIMv2`, `PARSeq` (`24x256` / `24x384`), and `TableCenterNet` (`tablecenternet_s_800_v3`) models (`vendor/ndlocr/*.onnx`) for single-threaded `onnxruntime-web` WASM execution (documented in `NDLOCR_QUANTIZATION.md` / `NDLOCR_QUANTIZATION.en.md`).
 - **Additional Model / Dependency Terms (`Built with DINOv3`)**:
   - The layout detection model (`DEIMv2`) uses weights derived from a distilled **DINOv3** backbone (`Built with DINOv3`); usage and any redistribution of the pretrained or quantized NDLOCR-Lite models are additionally subject to the Meta **DINOv3 License** (https://github.com/facebookresearch/dinov3/blob/main/LICENSE.md) and dependency terms listed in `ndl-lab/ndlocr-lite`'s `LICENCE_DEPENDENCIES` (https://github.com/ndl-lab/ndlocr-lite).
-  - Note: `.onnx` model binaries are excluded from Git repository tracking via `.gitignore`. If you package and redistribute the `.int8.onnx` binaries in a GitHub Release archive, include a copy of the DINOv3 License alongside the release assets.
+  - Note: `.onnx` model binaries are excluded from Git repository tracking via `.gitignore`. If you package and redistribute the quantized `.onnx` binaries in a GitHub Release archive, include a copy of the DINOv3 License alongside the release assets.
 - **Boundary with Repository MIT License**:
-  - Original extension code authored for this repository is licensed under the MIT License ([LICENSE](LICENSE)), whereas `ndlocr_engine.js`, `vendor/ndlocr/ndl_charlist.js`, and NDLOCR-Lite model derivatives remain governed by **CC BY 4.0** (and DINOv3 License terms for model weights).
+  - Original extension code authored for this repository is licensed under the MIT License ([LICENSE](LICENSE)), whereas `ndlocr_engine.js`, `tablecenternet_engine.js`, `vendor/ndlocr/ndl_charlist.js`, `vendor/ndlocr/ndl_character_inclusion.js`, and NDLOCR-Lite model derivatives remain governed by **CC BY 4.0** (and DINOv3 License terms for model weights).
 
 ---
 

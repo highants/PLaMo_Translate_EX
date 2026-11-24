@@ -354,7 +354,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             imageDataUrl: message.imageDataUrl,
             ocrLang: message.ocrLang || stored.ocrLang || stored.sourceLang || 'auto',
             ocrEngine: message.ocrEngine || stored.ocrEngine || 'ndlocr',
-            singleBlock: Boolean(message.singleBlock)
+            singleBlock: Boolean(message.singleBlock),
+            characterInclusion: message.characterInclusion !== undefined
+              ? Boolean(message.characterInclusion)
+              : stored.ocrCharacterInclusion !== false,
+            enableTcy: message.enableTcy !== undefined
+              ? Boolean(message.enableTcy)
+              : stored.ocrEnableTcy !== false,
+            enableTableStructure: message.enableTableStructure !== undefined
+              ? Boolean(message.enableTableStructure)
+              : stored.ocrEnableTableStructure !== false
           });
           sendResponse(ocrRes);
           break;

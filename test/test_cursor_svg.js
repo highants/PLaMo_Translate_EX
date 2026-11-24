@@ -1,7 +1,7 @@
 const fs = require('fs');
 const assert = require('assert');
 
-const css = fs.readFileSync(__dirname + '/content.css', 'utf8');
+const css = fs.readFileSync(__dirname + '/../content.css', 'utf8');
 const selectorIdx = css.lastIndexOf('.plamo-ext-area-selector {');
 const selectorBlock = css.slice(selectorIdx, selectorIdx + 1500);
 

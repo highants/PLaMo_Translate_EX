@@ -10,7 +10,7 @@ const assert = require('assert');
 const path = require('path');
 
 // Extract stripLeadingIconArtifacts from offscreen.js
-const offscreenSrc = fs.readFileSync(path.join(__dirname, 'offscreen.js'), 'utf8');
+const offscreenSrc = fs.readFileSync(path.join(__dirname, '..', 'offscreen.js'), 'utf8');
 const matchOff = offscreenSrc.match(/(const LEADING_ICON_ARTIFACT_REGEX[\s\S]*?function stripLeadingIconArtifacts[\s\S]*?\n\})/);
 if (!matchOff) {
   console.error('FAIL: Could not locate stripLeadingIconArtifacts in offscreen.js');
@@ -22,7 +22,7 @@ vm.runInContext(matchOff[1] + '\nglobalThis.stripLeadingIconArtifacts = stripLea
 const stripOffscreen = sandboxOff.stripLeadingIconArtifacts;
 
 // Extract stripLeadingIconArtifacts from ndlocr_engine.js
-const ndlSrc = fs.readFileSync(path.join(__dirname, 'ndlocr_engine.js'), 'utf8');
+const ndlSrc = fs.readFileSync(path.join(__dirname, '..', 'ndlocr_engine.js'), 'utf8');
 const matchNdl = ndlSrc.match(/(const LEADING_BULLET_REGEX[\s\S]*?function stripLeadingIconArtifacts[\s\S]*?\n  \})/);
 if (!matchNdl) {
   console.error('FAIL: Could not locate stripLeadingIconArtifacts in ndlocr_engine.js');

@@ -8,8 +8,8 @@ const vm = require('vm');
 const path = require('path');
 const assert = require('assert');
 
-const contentJs = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
-const contentCss = fs.readFileSync(path.join(__dirname, 'content.css'), 'utf8');
+const contentJs = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
+const contentCss = fs.readFileSync(path.join(__dirname, '..', 'content.css'), 'utf8');
 
 const fnMatch = contentJs.match(
   /(function computeOverlayToolbarLayout\([\s\S]*?)\r?\n\s*async function runOcrOverlayPipeline/

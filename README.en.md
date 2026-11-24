@@ -1,4 +1,4 @@
-# PLaMo Translate (LM Studio & In-Browser Wllama) — v1.2.0
+# PLaMo Translate (LM Studio & In-Browser Wllama) — v1.3.0
 
 English | [日本語](README.md) · [📄 NDLOCR-Lite Quantization Notes](NDLOCR_QUANTIZATION.en.md)
 
@@ -6,9 +6,9 @@ A privacy-first, zero-cloud-dependency Chrome extension (Manifest V3 / Vanilla J
 
 Translate sensitive business documents, source code, and confidential text **100% locally on your machine with zero data leakage, high speed, and zero API costs**.
 
-> **🔍 Built-in High-Accuracy Japanese OCR: NDLOCR-Lite (v1.2.0+)**
-> For screenshot and image OCR translation, this extension embeds **NDLOCR-Lite**—an open-source OCR developed by the National Diet Library (NDL) of Japan—custom-quantized with an **INT8 / FP16 hybrid recipe** (<50 MB total) for `onnxruntime-web` WASM.
-> Recognize and translate Japanese vertical text, newspaper columns, and UI screenshots **100% locally in your browser with zero external API calls** ([📄 Read the Quantization & Optimization Notes](NDLOCR_QUANTIZATION.en.md)).
+> **🔍 Built-in High-Accuracy JA/EN/Handwriting/Table OCR: NDLOCR-Lite v2.0**
+> For screenshot and image OCR translation, this extension embeds the National Diet Library's **NDLOCR-Lite v2.0** (`DEIMv2` + `PARSeq` + lazy-loaded `TableCenterNet`) custom-quantized with an **INT8 / FP16 hybrid recipe** (**48.83 MB** across core 3 models; **63.22 MB** including TableCenterNet) for `onnxruntime-web` WASM.
+> Recognize and translate Japanese vertical text, newspaper columns, handwriting, English prose/UI, **variant kanji normalization (異体字包摂)**, **Tate-Chuu-Yoko**, and **structured Markdown tables** **100% locally in your browser with zero external API calls** ([📄 Read the Quantization & Optimization Notes](NDLOCR_QUANTIZATION.en.md)).
 
 ---
 
@@ -115,11 +115,12 @@ Easily selectable directly from the Settings panel:
    * Automatically flips the target language to English when Japanese text is entered while target is set to Japanese (preserved as Japanese rewrite/refinement when specific styles like Polite, Plain, or Easy Japanese are selected).
 10. **Serialized Offscreen Queue**:
     * In Mode B, multiple paragraph translation requests are dispatched through a mutex queue to ensure KV cache stability and prevent memory race conditions.
-11. **100% Local Image & Screen-Area OCR Overlay Translation (NDLOCR-Lite + Tesseract.js)**:
-    * Integrates NDL Lab's **NDLOCR-Lite** (`DEIMv2` detection + `PARSeq` recognition) custom-quantized for single-threaded `onnxruntime-web` WASM (**-56.5% total size reduction to 49.80 MB across 3 models**), supporting vertical Japanese newspaper layouts (right-to-left column reading order), bulleted lists, and UI screenshots.
-    * Automatically routes English/multilingual images or fallbacks to bundled **Tesseract.js** (`jpn+eng` / `eng`).
-    * Interactive overlay controls include **Original ↔ Translation toggle**, **Peek Original (`👁`)**, **Editable Full-Text Drawer (`📑`)**, **Per-Block Delete (hover/right-click)**, **Append Region OCR (`➕`)**, and a **Draggable & Viewport-Clamped Toolbar** (prevents clipping on full-screen images and Chrome Side Panel resize).
-    * 👉 Full quantization benchmarks and technical write-up: **[NDLOCR-Lite ONNX Quantization & WASM Optimization Notes](NDLOCR_QUANTIZATION.en.md)**
+11. **100% Local Image & Screen-Area OCR Overlay Translation (NDLOCR-Lite v2.0 + Tesseract.js)**:
+    * Integrates NDL Lab's **NDLOCR-Lite v2.0** (`DEIMv2` detection + `PARSeq` recognition + lazy-loaded `TableCenterNet` table recognition) custom-quantized for single-threaded `onnxruntime-web` WASM (**48.83 MB / -57.5%** across core 3 models; **63.22 MB / -55.9%** including TableCenterNet), supporting vertical Japanese newspaper layouts, handwriting, English prose/UI, bulleted lists, and tables.
+    * **V2.0 Upgrades**: Built-in **Variant Character Normalization (異体字包摂, enabled by default)**, **Tate-Chuu-Yoko** support, **TableCenterNet Markdown table output** in the editable drawer, **whitespace-midpoint long-line splitting** (accurate 50–100+ char English/Japanese lines without bundling PARSeq-768), and **1-pass English auto-routing** (eliminates redundant Tesseract re-runs on confident English).
+    * Automatically falls back to bundled **Tesseract.js** for non-JA/EN languages or low-confidence cases.
+    * Interactive overlay controls include **Original ↔ Translation toggle**, **Peek Original (`👁`)**, **Editable Full-Text Drawer (`📑`, with structured Markdown tables)**, **Per-Block Delete (hover/right-click)**, **Append Region OCR (`➕`)**, and a **Draggable & Viewport-Clamped Toolbar**.
+    * 👉 Full quantization benchmarks and technical write-up: **[NDLOCR-Lite v2.0 ONNX Quantization & WASM Optimization Notes](NDLOCR_QUANTIZATION.en.md)**
 
 ---
 
@@ -143,7 +144,7 @@ All 53 languages officially supported by PLaMo 3 Translate, plus official **Easy
 2. Toggle on **Developer mode** in the top-right corner.
 3. Click **Load unpacked** in the top-left corner.
 4. Select the downloaded/cloned folder (`PlaMo_translate`).
-   * **Note for `git clone` setups (NDLOCR-Lite Models)**: Large ONNX binaries (`vendor/ndlocr/*.onnx`) are excluded via `.gitignore`. GitHub Release archives bundle them directly; if cloning from source and you want local NDLOCR-Lite Japanese OCR, download the 3 `.int8.onnx` model files from GitHub Releases into `PlaMo_translate/vendor/ndlocr/` (see [NDLOCR_QUANTIZATION.en.md](NDLOCR_QUANTIZATION.en.md); if omitted, OCR automatically falls back to Tesseract.js).
+   * **Note for `git clone` setups (NDLOCR-Lite V2.0 Models)**: Large ONNX binaries (`vendor/ndlocr/*.onnx`) are excluded via `.gitignore`. GitHub Release archives (`ndlocr.zip`) bundle them directly; if cloning from source and you want local NDLOCR-Lite V2.0 OCR, extract `ndlocr.zip` so the 4 quantized `.onnx` model files (`deim-s-1024x1024-261124.int8.onnx`, `parseq-ndl-24x256-30-tiny-499epoch-261124.int8.onnx`, `parseq-ndl-24x384-50-tiny-278epoch-261124.int8.onnx`, `tablecenternet_s_800_v3.fp16.onnx`) and `LICENSE.md` reside in `PlaMo_translate/vendor/ndlocr/` (see [NDLOCR_QUANTIZATION.en.md](NDLOCR_QUANTIZATION.en.md); if omitted, OCR automatically falls back to Tesseract.js).
 5. Pin the **PLaMo Translate** icon to your browser toolbar.
 
 ---
@@ -249,6 +250,9 @@ Access **⚙️ Settings** to configure:
 | **In-Page Translation Mode** | `button` | `button` (icon on select), `instant` (immediate popover), `off` |
 | **Image Hover OCR Button** | `true` (Enabled) | Show the `🖼️` quick OCR button when hovering over images |
 | **Image OCR Engine** | `ndlocr` (Recommended) | `NDLOCR-Lite (High-accuracy Japanese / INT8 WASM)` or `Tesseract.js (Lightweight / English)` |
+| **Variant Kanji Normalization** | `true` (Enabled) | Normalizes 4,905 old/variant kanji to modern forms via NDLOCR-Lite V2.0 dictionary |
+| **Tate-Chuu-Yoko Correction** | `true` (Enabled) | Detects and fixes horizontal numerals/symbols embedded inside vertical Japanese text |
+| **Table Structure Recognition** | `true` (Enabled) | Lazily loads TableCenterNet on table regions and outputs structured Markdown tables |
 | **Auto Ja↔En Switch** | `true` (Enabled) | Automatically flip target to English when input is Japanese |
 | **Temperature** | `0.0` | Output determinism (0.0 is best for translation fidelity) |
 | **Max Tokens** | `1024` | Maximum tokens generated per translation call |
@@ -274,8 +278,32 @@ Access **⚙️ Settings** to configure:
 
 ---
 
-## Links & Credits
+## Permissions & Privacy
 
+All translation and OCR processing runs **100% locally**—selected text, page contents, and captured screenshots are never sent to or stored on external cloud servers. Each permission in `manifest.json` is used strictly for:
+
+* `storage`: Persisting user preferences (engine mode, UI language, glossary) locally.
+* `contextMenus` / `sidePanel`: Providing right-click translation actions and the persistent side panel.
+* `activeTab` / `scripting`: Screen-area OCR capture and in-page translation injection.
+* `offscreen`: Hosting the dedicated WASM/WebGPU runtime for Wllama, NDLOCR-Lite, and Tesseract.js.
+* `<all_urls>` / `http://localhost/*`: Translating arbitrary web pages, fetching cross-origin page images for OCR with `credentials: 'omit'`, and communicating with local LM Studio.
+* *Note*: In Mode B, the extension downloads GGUF weights once on user request from Hugging Face (`pfnet/plamo-3-translate-0.8b-GGUF`) and caches them in browser OPFS.
+
+## Running Tests
+
+Run all 13 unit & contract test suites under `test/` with Node.js:
+
+```bash
+for f in test/test_*.js; do node "$f" || exit 1; done
+```
+
+---
+
+## Credits, Links & License
+
+* **Director**: highants
+* **Development**: Antigravity (Google Deepmind)
+* **License**: [MIT License](LICENSE) *(adapted NDLOCR-Lite files such as `ndlocr_engine.js`, `tablecenternet_engine.js`, `vendor/ndlocr/ndl_charlist.js`, and `vendor/ndlocr/ndl_character_inclusion.js` remain governed by CC BY 4.0)*
 * **Built with PLaMo** · **Built with DINOv3** (NDLOCR-Lite layout detection backbone)
 * **Preferred Networks Tech Blog**:  
   [PLaMo 3 Translate Release & Engineering Insights](https://www.preferred.jp/ja/blog/tech/plamo-3-translate-weight-release)
@@ -287,20 +315,17 @@ Access **⚙️ Settings** to configure:
 * **OCR Engines & Quantization Docs**:
   * [NDLOCR-Lite (National Diet Library / ndl-lab)](https://github.com/ndl-lab/ndlocr-lite)
   * [Tesseract.js](https://github.com/naptha/tesseract.js) / [ONNX Runtime Web](https://onnxruntime.ai/)
-  * 📘 **[NDLOCR-Lite ONNX Quantization & WASM Optimization Notes (NDLOCR_QUANTIZATION.en.md)](NDLOCR_QUANTIZATION.en.md)**
-* **Licenses & Third-Party Notices**:
-  * Original Extension Code: [MIT License](LICENSE) *(adapted NDLOCR-Lite files such as `ndlocr_engine.js` and `vendor/ndlocr/ndl_charlist.js` remain governed by CC BY 4.0)*
+  * 📘 **[NDLOCR-Lite V2.0 ONNX Quantization & WASM Optimization Notes (NDLOCR_QUANTIZATION.en.md)](NDLOCR_QUANTIZATION.en.md)**
+* **Third-Party Licenses & Notices**:
   * Full Third-Party License Texts & Notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
   * **@wllama/wllama (`v3.8.1`) / llama.cpp**: [MIT License](vendor/wllama/LICENCE) (`Copyright (c) 2024 Xuan Son NGUYEN`)
   * **ONNX Runtime Web (`v1.31.1`)**: MIT License (`Copyright (c) Microsoft Corporation`)
   * **Tesseract.js (`v5.1.1`) / tesseract.js-core**: Apache License 2.0 (full text included in [tesseract.min.js.LICENSE.txt](vendor/tesseract/tesseract.min.js.LICENSE.txt) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md))
   * **NDLOCR-Lite (National Diet Library, Japan)**: [CC BY 4.0 (Creative Commons Attribution 4.0 International)](https://creativecommons.org/licenses/by/4.0/)
-    * Attribution: Original code and models by National Diet Library, Japan ([ndl-lab/ndlocr-lite](https://github.com/ndl-lab/ndlocr-lite)).
-    * **Modifications**: Ported pre/post-processing pipelines to browser JavaScript ([ndlocr_engine.js](ndlocr_engine.js)), extracted character vocabulary (`vendor/ndlocr/ndl_charlist.js`), and quantized `DEIMv2` / `PARSeq` models to INT8/FP16 for `onnxruntime-web` WASM ([NDLOCR_QUANTIZATION.en.md](NDLOCR_QUANTIZATION.en.md)).
-    * **Additional Terms (`Built with DINOv3`)**: Because the layout detection backbone relies on distilled **DINOv3** weights, usage and any redistribution of pretrained/quantized NDLOCR-Lite models are also subject to the Meta **[DINOv3 License](https://github.com/facebookresearch/dinov3/blob/main/LICENSE.md)** (include a full copy if bundling `.int8.onnx` weights in GitHub Releases) and `LICENCE_DEPENDENCIES` in `ndl-lab/ndlocr-lite`.
+    * Attribution: Original code and models by National Diet Library, Japan ([ndl-lab/ndlocr-lite](https://github.com/ndl-lab/ndlocr-lite) v2.0.0).
+    * **Modifications**: Ported pre/post-processing and table-recognition pipelines to browser JavaScript ([ndlocr_engine.js](ndlocr_engine.js), [tablecenternet_engine.js](tablecenternet_engine.js)), extracted character vocabulary and variant inclusion mappings (`vendor/ndlocr/ndl_charlist.js`, `vendor/ndlocr/ndl_character_inclusion.js`), and quantized `DEIMv2`, `PARSeq`, and `TableCenterNet` models to INT8/FP16 for `onnxruntime-web` WASM ([NDLOCR_QUANTIZATION.en.md](NDLOCR_QUANTIZATION.en.md)).
+    * **Additional Terms (`Built with DINOv3`)**: Because the layout detection backbone relies on distilled **DINOv3** weights, usage and any redistribution of pretrained/quantized NDLOCR-Lite models are also subject to the Meta **[DINOv3 License](https://github.com/facebookresearch/dinov3/blob/main/LICENSE.md)** (include a full copy when bundling quantized `.onnx` weights in GitHub Releases) and `LICENCE_DEPENDENCIES` in `ndl-lab/ndlocr-lite`.
   * **PLaMo Translation Models**: [PLaMo Community License](https://plamo.preferredai.jp/info/plamo-community-license-ja)
     * Free for personal, research, and non-commercial purposes without registration.
     * Entities with annual revenue under 1 billion JPY may use it for commercial purposes free of charge upon prior [registration](https://plamo.preferredai.jp/info/plamo-community-license-ja).
     * **Output Attribution Exemption (Article 5)**: Since PLaMo 3 Translate is classified as a "Transformation Model", users are **not required to attribute PLaMo on translation outputs**, allowing translated documents to be freely distributed in professional and business contexts.
-* **Development Partner / AI Assistant**:
-  * **Antigravity (Google Deepmind)**: Co-developed the extension architecture, browser porting and ONNX INT8/FP16 hybrid quantization of NDLOCR-Lite, UI/UX refinements, and technical documentation.

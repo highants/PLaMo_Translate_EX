@@ -178,9 +178,30 @@
           <div class="setting-item">
             <label for="settingOcrEngine" data-i18n="labelOcrEngine">画像翻訳のOCRエンジン</label>
             <select id="settingOcrEngine" class="select-input">
-              <option value="ndlocr" data-i18n="ocrEngineNdl">NDLOCR-Lite (国立国会図書館・日本語高精度 / 推奨)</option>
-              <option value="tesseract" data-i18n="ocrEngineTesseract">Tesseract.js (軽量・英語向け)</option>
+              <option value="ndlocr" data-i18n="ocrEngineNdl">NDLOCR-Lite v2.0 (国立国会図書館・日英/手書き高精度 / 推奨)</option>
+              <option value="tesseract" data-i18n="ocrEngineTesseract">Tesseract.js (軽量・多言語向け)</option>
             </select>
+          </div>
+
+          <!-- NDLOCR-Lite V2.0 Feature Toggles -->
+          <div class="setting-item">
+            <label class="checkbox-label">
+              <input type="checkbox" id="settingOcrCharacterInclusion" checked>
+              <span data-i18n="labelOcrCharacterInclusion">異体字包摂（旧字体・異体字を新字体に変換する）</span>
+            </label>
+            <span class="setting-desc" data-i18n="descOcrCharacterInclusion">NDLOCR-Lite v2.0 機能：旧字体（例: 國→国, 學→学）を新字体へ自動正規化し翻訳精度を安定させます</span>
+          </div>
+          <div class="setting-item">
+            <label class="checkbox-label">
+              <input type="checkbox" id="settingOcrEnableTcy" checked>
+              <span data-i18n="labelOcrEnableTcy">縦中横の認識を強化する（新聞等の縦書き内横数字）</span>
+            </label>
+          </div>
+          <div class="setting-item">
+            <label class="checkbox-label">
+              <input type="checkbox" id="settingOcrEnableTableStructure" checked>
+              <span data-i18n="labelOcrEnableTableStructure">表構造を自動推定する（全文ドロワーへMarkdown表出力）</span>
+            </label>
           </div>
         </div>
 
@@ -348,7 +369,7 @@
     <!-- Footer -->
     <footer class="app-footer">
       <span>PLaMo-3-Translate × LM Studio / Wllama</span>
-      <span class="footer-version">v1.2.0</span>
+      <span class="footer-version">v1.3.0</span>
     </footer>
   </div>
 

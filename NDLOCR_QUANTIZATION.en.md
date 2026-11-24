@@ -1,141 +1,78 @@
-# NDLOCR-Lite ONNX Model Quantization & WASM Optimization Notes
+# NDLOCR-Lite V2.0 ONNX Model Quantization & WASM Optimization Notes
 
 English | [日本語](NDLOCR_QUANTIZATION.md) · [← Back to README](README.en.md)
 
-> **Author**: Antigravity (Google Deepmind) — Browser porting, custom ONNX quantization pipeline implementation, and WASM benchmarking for NDLOCR-Lite in this project.
+> **Author**: Antigravity (Google Deepmind) — Browser porting, custom ONNX quantization pipeline implementation, TableCenterNet integration, and WASM benchmarking for NDLOCR-Lite V2.0 in this project.
 
-This document explains **why these quantized models were created**, **how the custom graph-rewriting and quantization pipeline was built**, and the verified engineering benchmarks and pitfalls learned while optimizing **NDLOCR-Lite** (`DEIMv2` text detection + `PARSeq` 24x256 / 24x384 recognition) for single-threaded `onnxruntime-web` WASM inside the `PlaMo_translate` Chrome extension.
-
----
-
-## 1. Background & Motivation
-
-When building 100% local, zero-cloud image and screen-area OCR translation inside a Chrome Extension (Manifest V3), we faced three practical constraints:
-
-1. **Limitations of Tesseract.js on Japanese Layouts**:
-   - While bundled `Tesseract.js` performs well on English and Latin scripts, Japanese vertical text (newspaper columns, manga, books) and mixed UI screenshots suffered from missed line ordering and recognition inaccuracies.
-2. **Weight Footprint of Unmodified NDLOCR-Lite**:
-   - The National Diet Library's **NDLOCR-Lite** (`DEIMv2` + `PARSeq-256` + `PARSeq-384`) delivers top-tier accuracy on both vertical and horizontal Japanese, but the unmodified FP32 ONNX weights total **114.52 MB** (40.26 MB + 36.46 MB + 37.81 MB).
-3. **Single-Threaded Browser WASM Bottlenecks & Quantizer Pitfalls**:
-   - Running 114.52 MB FP32 models inside Chrome's Offscreen Document (`ort.wasm.min.js`, `numThreads: 1`, `proxy: false`) created heavy bundle size, slow cold-start session loads, and >7.5s detection latency on `DEIMv2`.
-   - Meanwhile, running stock `onnxruntime.quantization` directly either broke PARSeq output completely (`0/30` gibberish) or made WASM inference 1.4x–2.8x *slower* than FP32.
-
-Our goal was to **shrink all 3 models under 50 MB total while speeding up single-threaded browser WASM inference and preserving 98.8–99.6% character accuracy**.
+This document summarizes the **NDLOCR-Lite V2.0 (released 2026-11-24)** model quantization pipeline, idle-CPU single-threaded `onnxruntime-web` WASM (`ort.wasm.min.js` v1.31.1, `numThreads: 1`) benchmarks, and browser-side speedups implemented in `PlaMo_translate`.
 
 ---
 
-## 2. How the Quantized Models Were Built
+## 1. Upgrading to NDLOCR-Lite V2.0 in Browser WASM
 
-Instead of tuning blindly on Python CPU, every iteration was benchmarked directly inside the target runtime (`ort.wasm.min.js`, `numThreads: 1`, `proxy: false`) on a real validation set of 78 Japanese newspaper + UI text lines (43 detection lines):
+**NDLOCR-Lite v2.0.0** dramatically improves handwritten Japanese and English recognition while introducing **variant character normalization (異体字包摂)**, **Tate-Chuu-Yoko (縦中横)**, and **TableCenterNet table structure recognition**. However, the unmodified FP32 ONNX binaries across all 4 models total **143.31 MB** (114.83 MB for the core 3 models alone).
 
-### Step 1: Baseline Profiling & Graph Inspection
-- Measured FP32 baselines in ORT Web WASM (`DEIMv2`: 7,529 ms; `PARSeq-256`: 107 ms; `PARSeq-384`: 235 ms).
-- Audited the exported ONNX graphs to identify shared decoder `Gemm` nodes across 32 unrolled autoregressive steps, the 5.49 MB `text_embed` `Gather` table, the 5.49 MB `/head` projection, and sensitivity of the ViT-Tiny encoder blocks.
-
-### Step 2: Detection Model (`DEIMv2`) via `dynamic-det`
-- Quantizing `Conv + MatMul + Gemm` reduced size to 11.59 MB, but WASM `ConvInteger` execution caused **5,488 ms inference (1.4x slower than excluding `Conv`)**.
-- Keeping `Conv` in FP32 and running `quant_pre_process(..., skip_symbolic_shape=True)` + `QUInt8` dynamic quantization strictly on `MatMul` + `Gemm` (`MatMulConstBOnly: True`) produced a **15.52 MB (-61.5%)** model that runs **~2x faster (3,744 ms, Mean IoU 0.964)**.
-
-### Step 3: Custom Hybrid Pipeline for Recognition (`PARSeq-256` / `PARSeq-384`)
-Using Python (`onnx` + `onnxruntime` + `numpy`), we built a dedicated 5-stage graph transformation pipeline to work around stock quantizer bugs and WASM kernel bottlenecks:
-
-1. **Safe Non-Mutating `Gemm(transB=1)` Expansion**: Replaced shared `Gemm` nodes with `MatMul + Add` using a single deduplicated `<weight>__T` initializer instead of mutating shared weights in place.
-2. **Constant `Identity` Chain Stripping**: Bypassed 342 redundant `Identity` nodes so shared constant `/head` weights were directly visible to constant-B quantization filters.
-3. **On-Demand Row-Wise Int8 `Gather` Compression**: Quantized the `[7144, 192]` character embedding row-by-row to `int8` + `row_scale`, rewriting `Gather(W_fp32, idx)` into `Gather(W_int8, idx) → Cast(float32) → Mul(Gather(row_scale, idx))` so only 192 floats are dequantized per step (~4x size reduction with zero runtime slowdown).
-4. **FP16 Weight Storage for Sensitive Layers**: Packed remaining ViT encoder, decoder, and `Conv` weights as `float16` initializers with graph-entry `Cast(to=FLOAT)` nodes, halving load time while matching FP32 inference speed and avoiding dynamic activation quantization loss.
-5. **Width-Specific Selective `MatMulInteger` (`QInt8`, per-channel)**: Guided by layer-wise ablation, quantized `/head` + `/proj/` + `blocks.6..11/mlp/fc1` on `24x256` (98.78%, 94 ms), while keeping `24x384` encoder layers in FP16 and quantizing `/head` only to prevent error drift on long lines (99.57%, 165 ms).
-
-### Step 4: Integration & End-to-End Verification
-- Bundled the three `.int8.onnx` models in `PlaMo_translate/vendor/ndlocr/`, wired them into [ndlocr_engine.js](ndlocr_engine.js), and validated end-to-end Japanese/English OCR, vertical newspaper column ordering, bullet grouping, UI icon stripping, and extension unit/contract suites.
+Our V2.0 browser optimization achieves four goals:
+1. **Keep the core 3 models (`DEIMv2` + `PARSeq-256` + `PARSeq-384`) under 50 MB total (48.83 MB, -57.5%)** while retaining **99.83%–99.99%** character match against FP32.
+2. **Compress and lazy-load `TableCenterNet` (28.48 MB → 14.39 MB FP16, -49.5%)**, incurring **0 ms / 0 MB** runtime cost on pages without tables.
+3. **Avoid bundling the 42.6 MB `PARSeq-768` (100-char) model** by adding a fast (<0.1 ms) **whitespace-valley midpoint splitter** (`findVerticalSplitX`) for wide horizontal lines (`charCount === 1` or aspect `>= 21`), enabling `PARSeq-384` to read 70–100+ character English/Japanese lines accurately.
+4. **1-Pass English Auto-Routing**: Verified on English UI and prose benchmarks, confident English output (`>= 60`) from NDLOCR-Lite V2.0 is returned directly in `auto` mode without a redundant Tesseract re-run (~1.5–2.5 s saved per English image).
 
 ---
 
-## 3. Summary Benchmarks
+## 2. Summary Benchmarks (Idle-CPU ORT Web WASM v1.31.1, `numThreads: 1`)
 
-| Model | Original (FP32) | Quantized Size | Reduction | Optimization Method | WASM Load Time | WASM Inference | Accuracy vs. FP32 |
+Accuracy was measured against FP32 baselines across 8 real-world domains (163 text lines: Japanese UI, NDL magazine scan, handwritten vertical/horizontal Japanese, English prose/UI, Japanese table, and vertical old-kanji + Tate-Chuu-Yoko).
+
+| Model (`vendor/ndlocr/`) | Original (FP32) | Optimized Size | Reduction | Optimization Method | WASM Load | WASM Warm Inference | Accuracy vs. FP32 |
 | :--- | :---: | :---: | :---: | :--- | :---: | :---: | :--- |
-| **DEIMv2** (`deim-s-1024x1024.int8.onnx`) | 40.26 MB | **15.52 MB** | **-61.5%** | `MatMul` + `Gemm` Dynamic INT8 (`QUInt8`) | 1,546ms → **1,070ms** | 7,529ms → **3,744ms** (**~2x faster**) | Line count 43/43 match / Mean IoU **0.964** |
-| **PARSeq-256** (`parseq-ndl-24x256-...int8.onnx`) | 36.46 MB | **15.69 MB** | **-57.0%** | Hybrid (`MatMulInteger` QInt8 + row-wise Int8 `Gather` + FP16 weights) | 1,320ms → **782–910ms** | 107ms → **94ms** (warm avg) | 71/78 exact lines / **98.78%** char accuracy |
-| **PARSeq-384** (`parseq-ndl-24x384-...int8.onnx`) | 37.81 MB | **18.60 MB** | **-50.8%** | Hybrid (`/head` `MatMulInteger` QInt8 + row-wise Int8 `Gather` + FP16 weights) | 2,219ms → **1,342–1,505ms** | 235ms → **165ms** (run 2) | 73/78 exact lines / **99.57%** char accuracy |
-| **Total (3 Models)** | **114.52 MB** | **49.80 MB** | **-56.5%** | — | — | — | **~64.7 MB saved (< 50 MB total)** |
+| **DEIMv2**<br>`deim-s-1024x1024-261124.int8.onnx` | 40.28 MB | **12.86 MB** | **-68.1%** | `MatMul`+`Gemm` `QUInt8` Dynamic INT8 + **`Conv` FP16 storage** | 1,841ms → **1,006ms**<br>(**1.83x faster**) | 4,790ms → **4,082ms**<br>(first 5,343 → 4,307ms) | 110/111 doc/hw/EN/table lines<br>Mean IoU **0.963–0.984** |
+| **PARSeq-256**<br>`parseq-ndl-24x256-30-tiny-499epoch-261124.int8.onnx` | 36.74 MB | **17.37 MB** | **-52.7%** | Hybrid (`/head` `MatMulInteger` QInt8 + per-row Int8 `Gather` + FP16 Encoder/Decoder) | 1,394ms → **1,131ms** | 159ms → **144ms**<br>(**faster than FP32**) | 159/163 exact (97.5%)<br>**99.83%** char match |
+| **PARSeq-384**<br>`parseq-ndl-24x384-50-tiny-278epoch-261124.int8.onnx` | 37.81 MB | **18.60 MB** | **-50.8%** | Hybrid (`/head` `MatMulInteger` QInt8 + per-row Int8 `Gather` + FP16 Encoder/Decoder) | 1,542ms → **1,700ms** | 193ms → **192ms** | 162/163 exact (99.4%)<br>**99.99%** char match |
+| **Core 3-Model Subtotal** | **114.83 MB** | **48.83 MB** | **-57.5%** | — | — | — | **< 50 MB (smaller than v1.2)** |
+| **TableCenterNet (Lazy)**<br>`tablecenternet_s_800_v3.fp16.onnx` | 28.48 MB | **14.39 MB** | **-49.5%** | FP16 weight storage (`Conv` + `DeformConv` `Cast float16→float32`) | 51ms → **56ms** | 2,654ms → **2,637ms** | **138/138 peaks identical**<br>max prob diff **0.0007** |
+| **All 4 Models Total** | **143.31 MB** | **63.22 MB** | **-55.9%** | — | — | — | **~80.1 MB saved** |
 
 > [!NOTE]
-> - All sizes and timings were measured on `PlaMo_translate/vendor/ort/ort.wasm.min.js` (v1.31.1, `numThreads: 1`, `proxy: false`).
-> - Quantization runs purely on CPU (no GPU needed; tested with Python 3.13 + `onnx==1.23.2` + `onnxruntime==1.31.1`) and completes in a few minutes.
+> - `tablecenternet_s_800_v3.onnx` contains 16 ONNX opset-19 `DeformConv` operators, verified to run natively on bundled `ort.wasm.min.js` v1.31.1.
+> - Quantization runs purely on CPU (Python 3.13 + `onnx` + `onnxruntime` + `numpy`) in a few minutes.
 
 ---
 
-## 4. Key Engineering Findings & Pitfalls Solved
+## 3. Key V2.0 Engineering Findings & Speedups
 
-### Finding 1: Always Benchmark in Real Single-Threaded ORT Web WASM, Not Python CPU
-
-Quantization operators that look fast in Python `CPUExecutionProvider` behave very differently under single-threaded `onnxruntime-web` WASM (`numThreads: 1`, `proxy: false`):
-
-| Tested Strategy | File Size | WASM Inference | Evaluation |
-| :--- | :---: | :---: | :--- |
-| **DEIMv2: `Conv+MatMul+Gemm` INT8** | 11.59 MB | 5,488 ms | `ConvInteger` WASM overhead makes inference **~1.4x slower** than quantizing `MatMul+Gemm` only (3,808 ms). |
-| **DEIMv2: `MatMul+Gemm` INT8 Only** | **15.52 MB** | **3,744–3,808 ms** | **Fastest** (~2x speedup over FP32 7,529 ms). Keeping `Conv` in FP32 is significantly faster in WASM. |
-| **PARSeq: Static QDQ (const `MatMul`)** | 15.48 MB | 234 ms | **>2x slower** than FP32 (107 ms) in WASM and lower accuracy (88.93%). |
-| **PARSeq: Full Weight-Only INT8 (`DequantizeLinear`)** | 10.74 MB | 293–303 ms | `DequantizeLinear` re-expands all weights and the `7144x192` embedding table (`Gather`) every inference (**~2.8x slower**). |
-| **PARSeq: FP16 Weights (`Cast float16→float32`)** | 19.15 MB | **108 ms** | Folded efficiently at load time (load time halved: 1,320ms → 693ms), matches FP32 speed with **99.78%** accuracy (76/78 exact lines). |
-
----
-
-### Finding 2: Shared `Gemm(transB=1)` In-Place Transpose Bug in `quantize_dynamic`
-
-Applying `quantize_dynamic` directly to unrolled autoregressive decoders like PARSeq corrupts output completely (`0/30` exact match):
-
-1. **In-place transpose of shared decoder weights**: All 32 unrolled decoder steps share the same `out_proj.weight` across `Gemm(transB=1)` nodes. ORT's internal `Gemm → MatMul` pass transposes the shared initializer `.T` **in place once per node** — 32 transposes cancel each other out and leave the weight untransposed.
-2. **Post-fusion renaming by `quant_pre_process`**: Node names passed to `nodes_to_quantize` / `nodes_to_exclude` fail to match after `MatMulAddFusion` / `_MatMul` renaming.
-3. **`Identity` chains hiding constant weights**: Output head `/head_0..31/MatMul` weights (`[192, 7142]`, 5.49 MB) sit behind `Identity` nodes, causing naive `n.input[1] in initializers` checks to miss them.
-
-**Fix**: Run custom ONNX pre-passes before `quantize_dynamic`:
-- Safely expand `Gemm` into `MatMul + Add` using a single newly created `<weight>__T` initializer (without mutating the original).
-- Bypass redundant `Identity` nodes (342 nodes) chained from constant initializers.
+1. **`DEIMv2` `QUInt8` + `Conv` FP16 Storage (15.53 MB → 12.86 MB)**:
+   - Storing the 5.40 MB of `Conv` weights in FP16 (`Cast(FLOAT)`) alongside `QUInt8` `MatMul`/`Gemm` avoids WASM `ConvInteger` slowdowns while cutting an extra 2.67 MB and accelerating cold load by **1.83x** (1,841ms → 1,006ms).
+   - Note: `per_channel=True` (`QInt8`) triggers an ORT `ShapeInferenceError` on DEIMv2's 3D `integral/Reshape_1` node; `QUInt8` per-tensor avoids this cleanly.
+2. **Tighter Encoder Sensitivity on V2.0 `PARSeq-256` (`499epoch`)**:
+   - Unlike v1.2 (`189epoch`), quantizing `/proj/` and `blocks.6..11/mlp/fc1` on V2.0 `499epoch` dropped accuracy to 95.98%. Keeping the encoder/decoder in FP16 and quantizing only `/head` (`MatMulInteger` QInt8 per-channel) + per-row Int8 `Gather` restores **99.83%** accuracy while still running **faster than FP32** (144ms vs. 159ms).
+   - Both `PARSeq` models still require our custom non-mutating `Gemm(transB=1)` → `MatMul + Add` expansion (82 / 104 `Gemm`s) and constant `Identity` chain stripping (450 / 562 nodes) prior to `quantize_dynamic`.
+3. **`TableCenterNet` FP16 Storage & Fast Logit-Space NMS**:
+   - 99.8% of `TableCenterNet` weights belong to `Conv` (25.01 MB) and `DeformConv` (3.28 MB). FP16 weight storage halves disk size to **14.39 MB** with 56ms load time and virtually lossless outputs (max heatmap probability delta `0.0007`).
+   - [tablecenternet_engine.js](tablecenternet_engine.js) pre-filters heatmap logits using `val >= logit(thresh)` prior to 3×3 local-maxima NMS, skipping >99.5% of background pixels (<1ms JS decode) and compacting empty phantom grid columns/rows.
+4. **JavaScript Pipeline Optimizations**:
+   - **Pruned Softmax (`decodeParseq`)**: Skips `Math.exp()` for logits with `diff <= -20` (~99.8% fewer `Math.exp` calls per line, identical confidence).
+   - **Whitespace-Midpoint Long-Line Splitting (`findVerticalSplitX`)**: Cleanly splits wide horizontal lines (`charCount === 1` / aspect `>= 21` / `>= 45`-char overflow) at blank column valleys for `PARSeq-384` without needing `PARSeq-768`.
+   - **Vertical + Horizontal Single-Line Fast Paths**: Skips ~4s `DEIMv2` detection on narrow single-line horizontal or vertical area captures.
+   - **Single `ImageData` Snapshot Reuse & Guarded Tate-Chuu-Yoko**: Shares one `getImageData` read across visual bullet detection, long-line split, and TCY; TCY skips immediately when `confidence >= 0.90` and validates candidate horizontal sub-chunks as genuine short ASCII/digits (`/^[A-Za-z0-9.,%!?]{2,4}$/`, `>= 0.80`) to prevent false splits on handwritten kanji.
 
 ---
 
-### Finding 3: Transformer Encoder Sensitivity & On-Demand Row-Wise `Gather`
-
-- **ViT-Tiny Encoder (21.58 MB)** is sensitive to dynamic activation quantization (`fc2` outliers degrade accuracy), whereas the **Output Head `/head` (5.49 MB)** tolerates `MatMulInteger` (`QInt8`, per-channel) at ~100% accuracy.
-- **Character Embedding `text_embed` (`Gather`, 5.49 MB)**: Replacing `Gather(W_fp32, idx)` with **`Gather(W_int8, idx) → Cast(float32) → Mul(Gather(row_scale, idx))`** dequantizes only the single active 192-d token row per autoregressive step, cutting embedding size by ~4x (~1.4 MB) with `<0.1ms` runtime cost.
-- **Width boundary (`24x256` vs `24x384`)**:
-  - `24x256` (short lines): `MatMulInteger` on `/head` + `/proj/` + `blocks.6..11/mlp/fc1` achieves **98.78%** accuracy at **94ms** (faster than FP32).
-  - `24x384` (long lines): Keep the entire encoder in FP16 and quantize only `/head` with `MatMulInteger` to prevent error accumulation over longer sequences, achieving **99.57%** accuracy (73/78 exact lines) at **165ms**.
-
----
-
-## 5. Quantization Recipes
-
-### DEIMv2 (`deim-s-1024x1024.int8.onnx`)
-1. `quant_pre_process(..., skip_symbolic_shape=True)`
-2. `quantize_dynamic(..., op_types_to_quantize=['MatMul', 'Gemm'], weight_type=QuantType.QUInt8, extra_options={'MatMulConstBOnly': True})` *(excluding `Conv`)*
-
-### PARSeq (`parseq-ndl-24x{256,384}-...int8.onnx`)
-1. Safely expand `Gemm(transB=1)` into `MatMul + Add` without mutating shared initializers.
-2. Short-circuit redundant constant `Identity` nodes.
-3. Convert `model.text_embed.embedding.weight` `Gather` into row-wise `int8` on-demand decode (`Gather(int8) -> Cast(f32) -> Mul(Gather(row_scale))`).
-4. Pack remaining large FP32 weights (encoder, decoder, `Conv`) as `float16` initializers with `Cast(to=FLOAT)`.
-5. Apply `quantize_dynamic(..., op_types_to_quantize=['MatMul'], weight_type=QuantType.QInt8, per_channel=True, extra_options={'MatMulConstBOnly': True})` selectively:
-   - **`24x256`**: `/head` + `/encoder/` `/proj/` & `blocks.6..11/mlp/fc1`
-   - **`24x384`**: `/head` only
-
----
-
-## 6. Extension Integration, GitHub Distribution & Verification
+## 4. Extension Integration, Distribution & Verification
 
 - **Model Directory**: `PlaMo_translate/vendor/ndlocr/`
-  - `deim-s-1024x1024.int8.onnx` (15,517,172 bytes / ~15.52 MB)
-  - `parseq-ndl-24x256-30-tiny-189epoch-tegaki3-r8data-202604.int8.onnx` (15,690,595 bytes / ~15.69 MB)
-  - `parseq-ndl-24x384-50-tiny-300epoch-tegaki3-r8data-202604.int8.onnx` (18,595,504 bytes / ~18.60 MB)
-- **GitHub Repository Setup**: `.gitignore` excludes `vendor/ndlocr/*.onnx` and `vendor/ort/*.jsep.*` from Git tracking. Download the quantized `.int8.onnx` files from the GitHub Releases package into `PlaMo_translate/vendor/ndlocr/` when setting up from a fresh clone (if unavailable, Japanese OCR falls back to bundled `Tesseract.js`).
-- **Engine Configuration**: [ndlocr_engine.js](ndlocr_engine.js) loads these `.int8.onnx` weights for `DET_MODEL_FILE`, `REC_SHORT.file`, and `REC_MEDIUM.file`.
+  - `deim-s-1024x1024-261124.int8.onnx` (12,855,692 bytes / ~12.86 MB)
+  - `parseq-ndl-24x256-30-tiny-499epoch-261124.int8.onnx` (17,366,917 bytes / ~17.37 MB)
+  - `parseq-ndl-24x384-50-tiny-278epoch-261124.int8.onnx` (18,595,504 bytes / ~18.60 MB)
+  - `tablecenternet_s_800_v3.fp16.onnx` (14,392,963 bytes / ~14.39 MB, lazy-loaded)
+  - `ndl_charlist.js` (7,141 chars, verified identical to V2.0 `NDLmoji.yaml`)
+  - `ndl_character_inclusion.js` (4,905 entries / 58.4 KB, V2.0 variant character inclusion map)
+  - `LICENSE.md` (Meta DINOv3 License)
+- **GitHub Repository Setup**: `.gitignore` excludes `vendor/ndlocr/*.onnx` and `vendor/*.zip`. Extract `ndlocr.zip` from GitHub Releases into `PlaMo_translate/vendor/ndlocr/` when running from a fresh clone.
 - **Verification**:
-  - End-to-end inference & `NDL_CHARLIST` decoding verified under `ort.wasm.min.js` (`numThreads: 1`)
-  - Syntax checks (`node -c ndlocr_engine.js`, `node -c content.js`) clean
-  - All 12 unit & contract test suites passing (`test_area_marquee_selection.js`, `test_block_delete_and_add_region.js`, `test_block_merging.js`, `test_bullet_splitting.js`, `test_cursor_svg.js`, `test_icon_filter.js`, `test_leading_icon_strip.js`, `test_newspaper_layout.js`, `test_ocr_routing.js`, `test_peek_hover.js`, `test_reading_order.js`, `test_toolbar_drag_and_clamp.js`)
+  - End-to-end ORT Web WASM inference verified across all 4 models (variant inclusion ON/OFF, 5×4 TableCenterNet Markdown/HTML, long English whitespace splitting, English UI, handwritten vertical Japanese)
+  - Clean `node -c` syntax checks across all 10 JS files
+  - All 13 unit & contract test suites under `test/` passing (existing 12 suites + `test/test_ndlocr_v2_features.js`)
 - **License & Attribution**:
-  - Original models & pipeline: National Diet Library, Japan ([ndl-lab/ndlocr-lite](https://github.com/ndl-lab/ndlocr-lite)), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-  - **Modifications**: Quantized and transformed `DEIMv2` / `PARSeq` models to INT8/FP16 for single-threaded `onnxruntime-web` WASM (v1.31.1, MIT License) and ported pre/post-processing to [ndlocr_engine.js](ndlocr_engine.js).
-  - Pretrained layout detection weights include distilled **DINOv3** components subject to the Meta **DINOv3 License** as noted in `ndl-lab/ndlocr-lite` (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for full third-party notices).
-
+  - Original models, dictionaries & algorithms: National Diet Library, Japan ([ndl-lab/ndlocr-lite](https://github.com/ndl-lab/ndlocr-lite) v2.0.0), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+  - Pretrained `DEIMv2` layout detection weights include distilled **DINOv3** components subject to the Meta **DINOv3 License** (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).

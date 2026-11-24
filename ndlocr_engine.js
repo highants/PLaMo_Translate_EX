@@ -1,38 +1,44 @@
 /**
- * PLaMo Translate - NDLOCR-Lite In-Browser OCR Engine
+ * PLaMo Translate - NDLOCR-Lite V2.0 In-Browser OCR Engine
  *
- * Runs NDL Lab's NDLOCR-Lite models on onnxruntime-web (WASM) inside the Offscreen Document:
- *   1. DEIMv2  : layout / text-line detection   (vendor/ndlocr/deim-s-1024x1024.int8.onnx)
- *   2. PARSeq  : text-line recognition (cascade) (vendor/ndlocr/parseq-ndl-24x{256,384}-*.int8.onnx)
+ * Runs NDL Lab's NDLOCR-Lite V2.0 models on onnxruntime-web (WASM) inside the Offscreen Document:
+ *   1. DEIMv2          : layout / text-line / table detection (vendor/ndlocr/deim-s-1024x1024-261124.int8.onnx)
+ *   2. PARSeq          : text-line recognition cascade        (vendor/ndlocr/parseq-ndl-24x{256,384}-*-261124.int8.onnx)
+ *   3. TableCenterNet  : lazy table structure recognition     (tablecenternet_engine.js + tablecenternet_s_800_v3.fp16.onnx)
  *
- * Pre/post-processing is ported from ndl-lab/ndlocr-lite (src/deim.py, src/parseq.py, src/ocr.py),
- * with crop margins, reading-order sorting, and UI layout post-processing modified for browser WASM.
+ * Pre/post-processing is ported from ndl-lab/ndlocr-lite v2.0.0
+ * (src/deim.py, src/parseq.py, src/ocr.py, src/character_inclusion.py, src/tcy_wrapper.py),
+ * with browser WASM optimizations (pruned softmax, whitespace-midpoint long-line splitting,
+ * zero-copy ImageData reuse, and vertical/horizontal single-line fast paths).
  *
  * Attribution & License (Adapted Work):
  *   Original Work: NDLOCR-Lite by National Diet Library, Japan (https://github.com/ndl-lab/ndlocr-lite)
  *   License: Creative Commons Attribution 4.0 International (CC BY 4.0)
  *            https://creativecommons.org/licenses/by/4.0/
- *   (This file and vendor/ndlocr/ndl_charlist.js remain licensed under CC BY 4.0;
+ *   (This file, tablecenternet_engine.js, vendor/ndlocr/ndl_charlist.js, and
+ *    vendor/ndlocr/ndl_character_inclusion.js remain licensed under CC BY 4.0;
  *    see THIRD_PARTY_NOTICES.md for details.)
  *
  * Requires (classic scripts loaded before this file):
- *   - vendor/ort/ort.wasm.min.js      -> global `ort`
- *   - vendor/ndlocr/ndl_charlist.js   -> global `NDL_CHARLIST` (7141 chars)
+ *   - vendor/ort/ort.wasm.min.js                -> global `ort`
+ *   - vendor/ndlocr/ndl_charlist.js             -> global `NDL_CHARLIST` (7141 chars)
+ *   - vendor/ndlocr/ndl_character_inclusion.js  -> global `NDL_CHARACTER_INCLUSION` (optional, 4905 entries)
+ *   - tablecenternet_engine.js                  -> global `NdlTableEngine` (optional, lazy table recognizer)
  *
- * Exposes: self.NdlOcrEngine = { recognize(imageDataUrl, { onProgress }) , isAvailable() }
+ * Exposes: self.NdlOcrEngine
  */
 (function (global) {
   'use strict';
 
   const MODEL_BASE = 'vendor/ndlocr/';
-  const DET_MODEL_FILE = 'deim-s-1024x1024.int8.onnx';
+  const DET_MODEL_FILE = 'deim-s-1024x1024-261124.int8.onnx';
   const REC_SHORT = {
-    file: 'parseq-ndl-24x256-30-tiny-189epoch-tegaki3-r8data-202604.int8.onnx',
+    file: 'parseq-ndl-24x256-30-tiny-499epoch-261124.int8.onnx',
     width: 256,
     cascadeAt: 25
   };
   const REC_MEDIUM = {
-    file: 'parseq-ndl-24x384-50-tiny-300epoch-tegaki3-r8data-202604.int8.onnx',
+    file: 'parseq-ndl-24x384-50-tiny-278epoch-261124.int8.onnx',
     width: 384,
     cascadeAt: Infinity
   };
@@ -46,6 +52,7 @@
 
   // ndl.yaml class indices (0-based after `label - 1`)
   const CLASS_TEXT_BLOCK = 0;
+  const CLASS_BLOCK_TABLE = 15;
   const LINE_CLASS_INDICES = new Set([1, 2, 3, 4, 5, 16]); // line_main, caption, ad, note, note_tochu, title
 
   const IMAGENET_MEAN = [0.485, 0.456, 0.406];
@@ -385,7 +392,8 @@
       labels: find('label', 0),
       boxes: find('box', 1),
       scores: find('score', 2),
-      charCounts: names.length > 3 ? find('char', 3) : null
+      charCounts: names.length > 3 ? find('char', 3) : null,
+      markdownStyles: names.length > 4 ? find('markdown', 4) : null
     };
   }
 
@@ -405,7 +413,7 @@
     }
 
     const out = await session.run(feeds);
-    const { labels, boxes, scores, charCounts } = pickDetOutputs(session, out);
+    const { labels, boxes, scores, charCounts, markdownStyles } = pickDetOutputs(session, out);
     if (!labels || !boxes || !scores) {
       throw new Error('Unexpected DEIM output tensors');
     }
@@ -428,10 +436,48 @@
         classIndex,
         score,
         x0, y0, x1, y1,
-        charCount: charCounts ? Number(charCounts.data[i]) : null
+        charCount: charCounts ? Number(charCounts.data[i]) : null,
+        markdownStyle: markdownStyles ? Number(markdownStyles.data[i]) : null
       });
     }
-    return detections;
+    return suppressOverlappingSameClassRegions(detections, 0.9);
+  }
+
+  /** Port of V2.0 deim.py _suppress_overlapping_regions: prefer larger same-label boxes */
+  function suppressOverlappingSameClassRegions(detections, overlapThreshold) {
+    if (!overlapThreshold || detections.length <= 1) return detections;
+    const areas = detections.map((d) => Math.max(0, d.x1 - d.x0) * Math.max(0, d.y1 - d.y0));
+    const order = detections.map((_, i) => i).sort((a, b) => areas[b] - areas[a]);
+    const keptByClass = new Map();
+    const suppressed = new Uint8Array(detections.length);
+
+    for (const idx of order) {
+      const area = areas[idx];
+      if (area <= 0) continue;
+      const det = detections[idx];
+      let kept = keptByClass.get(det.classIndex);
+      if (!kept) {
+        kept = [];
+        keptByClass.set(det.classIndex, kept);
+      }
+      let drop = false;
+      for (const otherIdx of kept) {
+        if (areas[otherIdx] <= area) continue;
+        const o = detections[otherIdx];
+        const ix = Math.max(0, Math.min(det.x1, o.x1) - Math.max(det.x0, o.x0));
+        const iy = Math.max(0, Math.min(det.y1, o.y1) - Math.max(det.y0, o.y0));
+        if ((ix * iy) / area >= overlapThreshold) {
+          drop = true;
+          break;
+        }
+      }
+      if (drop) {
+        suppressed[idx] = 1;
+      } else {
+        kept.push(idx);
+      }
+    }
+    return detections.filter((_, i) => !suppressed[i]);
   }
 
   function iou(a, b) {
@@ -688,10 +734,9 @@
     const w = line.x1 - line.x0;
     const h = line.y1 - line.y0;
     const isVertical = isLineVertical(line);
-    // DEIM boxes are tight (often clipping baselines) -> asymmetric margins.
-    // Tuned on UI label images: +2px sides/top, ~+6px bottom for ~19px-high lines.
+    // DEIM boxes are tight (often clipping baselines or left capitals) -> asymmetric margins.
     const cross = isVertical ? w : h;
-    const sideMargin = Math.max(2, Math.round(cross * 0.1));
+    const sideMargin = Math.max(3, Math.round(cross * 0.15));
     const trailMargin = Math.max(2, Math.round(cross * 0.3));
     let x0, y0, x1, y1;
     if (isVertical) {
@@ -712,21 +757,95 @@
     return { x0, y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0), isVertical };
   }
 
-  const INV_127_5 = 1 / 127.5;
-  function buildRecTensor(srcCanvas, crop, targetW) {
-    const { ctx, data } = getPooledRecContext(targetW, REC_HEIGHT);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, targetW, REC_HEIGHT);
+  /** Port of V2.0 parseq.py: remove stray ASCII spaces directly adjacent to Japanese 、/。 */
+  function removeAsciiSpacesAroundJapanesePunctuation(text) {
+    if (!text) return '';
+    return text
+      .replace(/ ([、。])/g, '$1')
+      .replace(/([、。]) /g, '$1');
+  }
 
-    if (crop.isVertical) {
+  let cachedDefaultInclusionDict = null;
+  let cachedMultiRegex = null;
+
+  function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function getInclusionDict(overrideDict) {
+    if (overrideDict && typeof overrideDict === 'object') return overrideDict;
+    return global.NDL_CHARACTER_INCLUSION || (typeof NDL_CHARACTER_INCLUSION !== 'undefined' ? NDL_CHARACTER_INCLUSION : null);
+  }
+
+  /**
+   * Port of V2.0 character_inclusion.py (異体字包摂 / jd_book.json mapping):
+   * Applies longest-match multi-character replacements first, then single-character translation.
+   */
+  function applyCharacterInclusion(text, overrideDict) {
+    if (!text || typeof text !== 'string') return text || '';
+    const dict = getInclusionDict(overrideDict);
+    if (!dict) return text;
+
+    let out = text;
+    const multi = dict.multi;
+    if (multi) {
+      let multiRe = null;
+      if (!overrideDict && dict === cachedDefaultInclusionDict) {
+        multiRe = cachedMultiRegex;
+      } else {
+        const keys = Object.keys(multi);
+        if (keys.length > 0) {
+          keys.sort((a, b) => b.length - a.length);
+          multiRe = new RegExp(keys.map(escapeRegExp).join('|'), 'g');
+        }
+        if (!overrideDict) {
+          cachedDefaultInclusionDict = dict;
+          cachedMultiRegex = multiRe;
+        }
+      }
+      if (multiRe) {
+        out = out.replace(multiRe, (m) => multi[m]);
+      }
+    }
+
+    const single = dict.single;
+    if (!single) return out;
+
+    // Fast zero-allocation pass when no character requires mapping
+    let firstHit = -1;
+    for (let i = 0; i < out.length; i++) {
+      if (single[out[i]] !== undefined) {
+        firstHit = i;
+        break;
+      }
+    }
+    if (firstHit === -1) return out;
+
+    let result = out.slice(0, firstHit);
+    for (let i = firstHit; i < out.length; i++) {
+      const ch = out[i];
+      const mapped = single[ch];
+      result += mapped !== undefined ? mapped : ch;
+    }
+    return result;
+  }
+
+  const INV_127_5 = 1 / 127.5;
+  function buildRecTensor(srcCanvas, crop, targetW, forceRotate) {
+    const { ctx, data } = getPooledRecContext(targetW, REC_HEIGHT);
+    const shouldRotate = forceRotate !== undefined ? Boolean(forceRotate) : crop.isVertical;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    if (shouldRotate) {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, targetW, REC_HEIGHT);
       // Rotate 90deg counter-clockwise (cv2.ROTATE_90_COUNTERCLOCKWISE) and stretch to targetW x 24:
       // (x, y) in crop -> (X, Y) = (y * targetW / h, (w - x) * 24 / w)
       ctx.setTransform(0, -REC_HEIGHT / crop.w, targetW / crop.h, 0, 0, REC_HEIGHT);
       ctx.drawImage(srcCanvas, crop.x0, crop.y0, crop.w, crop.h, 0, 0, crop.w, crop.h);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
     } else {
-      // Direct stretch (no padding) like the original cv2.resize — padding causes hallucinations
+      // Direct stretch covers the entire targetW x REC_HEIGHT canvas -> skip redundant fillRect
       ctx.drawImage(srcCanvas, crop.x0, crop.y0, crop.w, crop.h, 0, 0, targetW, REC_HEIGHT);
     }
 
@@ -751,8 +870,9 @@
     let firstSum = 0;
     let firstMin = Infinity;
     for (let k = 0; k < vocab; k++) {
-      firstSum += d[k];
-      if (d[k] < firstMin) firstMin = d[k];
+      const v = d[k];
+      firstSum += v;
+      if (v < firstMin) firstMin = v;
     }
     const isProb = firstMin >= 0 && Math.abs(firstSum - 1) < 0.02;
 
@@ -776,20 +896,27 @@
       if (isProb) {
         p = bestVal;
       } else {
+        // Pruned softmax: exp(-20) < 2.1e-9 -> skips ~99.8% of Math.exp() calls with identical confidence
         let sum = 0;
-        for (let k = 0; k < vocab; k++) sum += Math.exp(d[off + k] - bestVal);
+        for (let k = 0; k < vocab; k++) {
+          const diff = d[off + k] - bestVal;
+          if (diff > -20) sum += Math.exp(diff);
+        }
         p = 1 / sum;
       }
       text += charlist[best - 1] || '';
       probSum += p;
       count++;
     }
-    return { text, confidence: count > 0 ? probSum / count : 0 };
+    return {
+      text: removeAsciiSpacesAroundJapanesePunctuation(text),
+      confidence: count > 0 ? probSum / count : 0
+    };
   }
 
-  async function readLine(srcCanvas, crop, model, charlist, onProgress) {
+  async function readLine(srcCanvas, crop, model, charlist, onProgress, forceRotate) {
     const session = await getSession(model.file, onProgress);
-    const tensor = buildRecTensor(srcCanvas, crop, model.width);
+    const tensor = buildRecTensor(srcCanvas, crop, model.width, forceRotate);
     const feeds = {};
     feeds[session.inputNames[0]] = tensor;
     const out = await session.run(feeds);
@@ -797,7 +924,271 @@
     return decodeParseq(outTensor, charlist);
   }
 
-  /** ocr.py cascade: char_count==3 -> 30-char model, otherwise 50-char model (100-char model not bundled) */
+  /**
+   * Find the cleanest blank vertical column near the horizontal center (35%..65%) of a wide line crop
+   * so long lines (>50 chars / charCount===1) can be split cleanly without slicing glyphs (replaces PARSeq-768).
+   */
+  function findVerticalSplitX(imageData, crop) {
+    if (!imageData || !imageData.data || !crop || crop.w < 40 || crop.h < 4) return null;
+    const { data, width, height } = imageData;
+    const x0 = Math.max(0, Math.min(width - 1, crop.x0 | 0));
+    const y0 = Math.max(0, Math.min(height - 1, crop.y0 | 0));
+    const w = Math.max(1, Math.min(width - x0, crop.w | 0));
+    const h = Math.max(1, Math.min(height - y0, crop.h | 0));
+    if (w < 40 || h < 4) return null;
+
+    // Sample top & bottom border row luminance to estimate local background (works on light & dark UI)
+    const borderLums = [];
+    const stepX = Math.max(1, Math.floor(w / 64));
+    for (let dx = 0; dx < w; dx += stepX) {
+      for (const dy of [0, h - 1]) {
+        const p = ((y0 + dy) * width + (x0 + dx)) << 2;
+        borderLums.push(0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2]);
+      }
+    }
+    borderLums.sort((a, b) => a - b);
+    const bgLum = borderLums.length > 0 ? borderLums[borderLums.length >> 1] : 255;
+
+    const lo = Math.floor(w * 0.35);
+    const hi = Math.ceil(w * 0.65);
+    const colInk = new Int32Array(hi - lo);
+    let minInk = Infinity;
+    for (let dx = lo; dx < hi; dx++) {
+      let ink = 0;
+      const gx = x0 + dx;
+      for (let dy = 0; dy < h; dy++) {
+        const p = ((y0 + dy) * width + gx) << 2;
+        const lum = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
+        if (Math.abs(lum - bgLum) > 28) ink++;
+      }
+      colInk[dx - lo] = ink;
+      if (ink < minInk) minInk = ink;
+    }
+
+    // Pick the widest contiguous valley at minInk
+    let bestCenter = w >> 1;
+    let bestLen = 0;
+    let runStart = -1;
+    for (let i = 0; i < colInk.length; i++) {
+      if (colInk[i] <= minInk) {
+        if (runStart === -1) runStart = i;
+      } else if (runStart !== -1) {
+        const len = i - runStart;
+        if (len > bestLen) {
+          bestLen = len;
+          bestCenter = lo + ((runStart + i) >> 1);
+        }
+        runStart = -1;
+      }
+    }
+    if (runStart !== -1) {
+      const len = colInk.length - runStart;
+      if (len > bestLen) {
+        bestLen = len;
+        bestCenter = lo + ((runStart + colInk.length) >> 1);
+      }
+    }
+
+    return { splitOffset: bestCenter, minInk, gapLen: bestLen };
+  }
+
+  /**
+   * Zero-overhead port of V2.0 tcy_wrapper.py (TateChuYokoWrapper / 縦中横):
+   * Uses the already-recognized vertical `fullResult` and fast pixel ink projection on `srcImageData`.
+   * Skips immediately when `fullResult` already has high confidence (>= 0.90), and validates every
+   * candidate TCY sub-chunk as genuine short ASCII digits/alphanumerics to prevent false splits on kanji/handwriting.
+   */
+  async function detectAndFixTateChuYoko(srcCanvas, srcImageData, crop, fullResult, model, charlist, onProgress) {
+    if (!srcImageData || !srcImageData.data || !crop || !crop.isVertical) return fullResult;
+    if (!fullResult || !fullResult.text) return fullResult;
+    // Fast path: PARSeq V2.0 already read the vertical column with >= 90% confidence -> skip re-slicing
+    if (fullResult.confidence >= 0.90) return fullResult;
+
+    const minLineWidth = 28;
+    const detMarginRatio = 0.1;
+    const ocrMarginRatio = 0.25;
+    const minComponents = 2;
+    const maxAspectRatio = 0.75;
+    const inkThresholdRatio = 0.10;
+    const TCY_TOKEN_REGEX = /^[A-Za-z0-9.,%!?]{2,4}$/;
+
+    const { data, width, height } = srcImageData;
+    const x0 = Math.max(0, Math.min(width - 1, crop.x0 | 0));
+    const y0 = Math.max(0, Math.min(height - 1, crop.y0 | 0));
+    const w = Math.max(1, Math.min(width - x0, crop.w | 0));
+    const h = Math.max(1, Math.min(height - y0, crop.h | 0));
+    if (w < minLineWidth || h < w * 1.5) return fullResult;
+
+    const segMinGap = Math.max(4, Math.min(7, Math.round(w * 0.15)));
+
+    // Compute grayscale buffer and adaptive mean threshold (matches tcy_wrapper.py)
+    const gray = new Uint8Array(w * h);
+    let sumGray = 0;
+    for (let dy = 0; dy < h; dy++) {
+      const rowOff = dy * w;
+      const srcRow = (y0 + dy) * width + x0;
+      for (let dx = 0; dx < w; dx++) {
+        const p = (srcRow + dx) << 2;
+        const g = (data[p] + data[p + 1] + data[p + 2]) / 3;
+        gray[rowOff + dx] = g;
+        sumGray += g;
+      }
+    }
+    const thresh = Math.floor(sumGray / Math.max(1, w * h));
+
+    // Row ink projection -> segment vertical characters/clusters
+    const rawBlocks = [];
+    let inBlock = false;
+    let bStart = 0;
+    for (let dy = 0; dy < h; dy++) {
+      const rowOff = dy * w;
+      let hasInk = false;
+      for (let dx = 0; dx < w; dx++) {
+        if (gray[rowOff + dx] < thresh) {
+          hasInk = true;
+          break;
+        }
+      }
+      if (hasInk && !inBlock) {
+        bStart = dy;
+        inBlock = true;
+      } else if (!hasInk && inBlock) {
+        rawBlocks.push([bStart, dy]);
+        inBlock = false;
+      }
+    }
+    if (inBlock) rawBlocks.push([bStart, h]);
+    if (rawBlocks.length === 0) return fullResult;
+
+    const blocks = [];
+    for (const b of rawBlocks) {
+      if (blocks.length > 0 && b[0] - blocks[blocks.length - 1][1] < segMinGap) {
+        blocks[blocks.length - 1][1] = b[1];
+      } else {
+        blocks.push([b[0], b[1]]);
+      }
+    }
+
+    // Count horizontal ink components inside each short vertical block
+    const tcyFlags = new Uint8Array(blocks.length);
+    let candCount = 0;
+    for (let bi = 0; bi < blocks.length; bi++) {
+      const [ys, ye] = blocks[bi];
+      const bh = ye - ys;
+      if (bh < segMinGap || bh > w * maxAspectRatio) continue;
+
+      const detMargin = Math.max(2, Math.floor(bh * detMarginRatio));
+      const sy0 = Math.max(0, ys - detMargin);
+      const sy1 = Math.min(h, ye + detMargin);
+
+      let bSum = 0;
+      const bCount = (sy1 - sy0) * w;
+      for (let dy = sy0; dy < sy1; dy++) {
+        const ro = dy * w;
+        for (let dx = 0; dx < w; dx++) bSum += gray[ro + dx];
+      }
+      const bThresh = Math.floor(bSum / Math.max(1, bCount));
+
+      let maxCol = 0;
+      const colSum = new Int32Array(w);
+      for (let dy = sy0; dy < sy1; dy++) {
+        const ro = dy * w;
+        for (let dx = 0; dx < w; dx++) {
+          if (gray[ro + dx] < bThresh) {
+            const v = ++colSum[dx];
+            if (v > maxCol) maxCol = v;
+          }
+        }
+      }
+      if (maxCol === 0) continue;
+
+      const colThr = maxCol * inkThresholdRatio;
+      let components = 0;
+      let inComp = false;
+      for (let dx = 0; dx < w; dx++) {
+        if (colSum[dx] > colThr) {
+          if (!inComp) {
+            components++;
+            inComp = true;
+          }
+        } else {
+          inComp = false;
+        }
+      }
+      if (components >= minComponents && components <= 4) {
+        tcyFlags[bi] = 1;
+        candCount++;
+      }
+    }
+
+    // Fast path: 0 extra PARSeq calls when no TCY cluster exists (or if >50% of line flagged -> likely handwriting/kanji)
+    if (candCount === 0 || candCount > Math.max(3, Math.floor(blocks.length * 0.5))) return fullResult;
+
+    // Validate each candidate TCY chunk unrotated FIRST: keep flag ONLY if it reads as genuine short ASCII/digits
+    const verifiedTcyText = new Map();
+    let verifiedCount = 0;
+    for (let bi = 0; bi < blocks.length; bi++) {
+      if (!tcyFlags[bi]) continue;
+      const [ys, ye] = blocks[bi];
+      const bh = ye - ys;
+      const ocrMargin = Math.max(2, Math.floor(bh * ocrMarginRatio));
+      const sy0 = Math.max(0, ys - ocrMargin);
+      const sy1 = Math.min(h, ye + ocrMargin);
+      const subCrop = { x0, y0: y0 + sy0, w, h: Math.max(1, sy1 - sy0), isVertical: false };
+      const seg = await readLine(srcCanvas, subCrop, REC_SHORT, charlist, onProgress, false);
+      const cleanSeg = (seg.text || '').trim();
+      if (seg.confidence >= 0.80 && TCY_TOKEN_REGEX.test(cleanSeg)) {
+        verifiedTcyText.set(bi, { text: cleanSeg, confidence: seg.confidence });
+        verifiedCount++;
+      } else {
+        tcyFlags[bi] = 0;
+      }
+    }
+
+    if (verifiedCount === 0) return fullResult;
+
+    const parts = [];
+    let confSum = 0;
+    let confCount = 0;
+    let i = 0;
+    const n = blocks.length;
+    while (i < n) {
+      if (tcyFlags[i]) {
+        const v = verifiedTcyText.get(i);
+        parts.push(v.text);
+        confSum += v.confidence;
+        confCount++;
+        i++;
+      } else {
+        const groupStart = i;
+        while (i < n && !tcyFlags[i]) i++;
+        const cy0 = (groupStart > 0 && tcyFlags[groupStart - 1]) ? blocks[groupStart - 1][1] : blocks[groupStart][0];
+        const cy1 = (i < n && tcyFlags[i]) ? blocks[i][0] : blocks[i - 1][1];
+        if (cy1 > cy0) {
+          const subCrop = { x0, y0: y0 + cy0, w, h: cy1 - cy0, isVertical: true };
+          const seg = await readLine(srcCanvas, subCrop, model, charlist, onProgress, true);
+          if (seg.text) {
+            parts.push(seg.text);
+            confSum += seg.confidence;
+            confCount++;
+          }
+        }
+      }
+    }
+
+    const joined = removeAsciiSpacesAroundJapanesePunctuation(parts.join(''));
+    const avgConf = confCount > 0 ? confSum / confCount : fullResult.confidence;
+    // Reject hallucination loops (e.g. "00000", "(((((") or confidence regressions
+    if (/(.)\1{4,}/.test(joined) || avgConf < fullResult.confidence * 0.92) {
+      return fullResult;
+    }
+    if (joined.length >= fullResult.text.length && (avgConf > fullResult.confidence || (/\d{2,}/.test(joined) && !/\d{2,}/.test(fullResult.text)))) {
+      return { text: joined, confidence: avgConf };
+    }
+    return fullResult;
+  }
+
+  /** ocr.py cascade: char_count==3 -> 30-char model, otherwise 50-char model (long lines use whitespace split) */
   function chooseInitialModel(line, crop) {
     if (line.charCount === 3) return REC_SHORT;
     if (line.charCount === 2 || line.charCount === 1) return REC_MEDIUM;
@@ -806,14 +1197,13 @@
     return runLen <= 11 ? REC_SHORT : REC_MEDIUM;
   }
 
-  async function recognizeLine(srcCanvas, line, crop, charlist, onProgress) {
+  async function recognizeSingleCrop(srcCanvas, line, crop, charlist, onProgress) {
     let model = chooseInitialModel(line, crop);
     let result;
     try {
       result = await readLine(srcCanvas, crop, model, charlist, onProgress);
     } catch (err) {
       if (model === REC_MEDIUM) {
-        // Medium model missing/broken -> fall back to short model
         model = REC_SHORT;
         result = await readLine(srcCanvas, crop, model, charlist, onProgress);
       } else {
@@ -823,10 +1213,82 @@
     if (model === REC_SHORT && result.text.length >= REC_SHORT.cascadeAt) {
       try {
         result = await readLine(srcCanvas, crop, REC_MEDIUM, charlist, onProgress);
+        model = REC_MEDIUM;
       } catch {
         // keep short-model result
       }
     }
+    return { result, model };
+  }
+
+  async function recognizeLongHorizontalSplit(srcCanvas, srcImageData, line, crop, charlist, onProgress, depth) {
+    const split = findVerticalSplitX(srcImageData, crop);
+    if (!split || split.splitOffset < 16 || (crop.w - split.splitOffset) < 16) {
+      const { result } = await recognizeSingleCrop(srcCanvas, { ...line, charCount: 2 }, crop, charlist, onProgress);
+      return result;
+    }
+
+    const pad = 2;
+    const leftW = Math.min(crop.w, split.splitOffset + pad);
+    const rightStart = Math.max(0, split.splitOffset - pad);
+    const rightW = Math.max(1, crop.w - rightStart);
+    const leftCrop = { x0: crop.x0, y0: crop.y0, w: leftW, h: crop.h, isVertical: false };
+    const rightCrop = { x0: crop.x0 + rightStart, y0: crop.y0, w: rightW, h: crop.h, isVertical: false };
+
+    const readHalf = async (halfCrop) => {
+      const halfAspect = halfCrop.w / Math.max(1, halfCrop.h);
+      if (depth < 1 && halfAspect >= 22 && halfCrop.w >= 160) {
+        return recognizeLongHorizontalSplit(srcCanvas, srcImageData, line, halfCrop, charlist, onProgress, depth + 1);
+      }
+      const { result } = await recognizeSingleCrop(srcCanvas, { ...line, charCount: 2 }, halfCrop, charlist, onProgress);
+      return result;
+    };
+
+    const leftRes = await readHalf(leftCrop);
+    const rightRes = await readHalf(rightCrop);
+    const leftText = (leftRes.text || '').replace(/\s+$/, '');
+    const rightText = (rightRes.text || '').replace(/^\s+/, '');
+
+    let sep = '';
+    if (leftText && rightText) {
+      const minWordGap = Math.max(3, Math.round(crop.h * 0.14));
+      const leftAscii = /[A-Za-z0-9,.;:!?\)\]"']$/.test(leftText);
+      const rightAscii = /^[A-Za-z0-9\(\[\-"']/.test(rightText);
+      if (split.gapLen >= minWordGap && leftAscii && rightAscii) {
+        sep = ' ';
+      }
+    }
+    const text = removeAsciiSpacesAroundJapanesePunctuation(leftText + sep + rightText);
+    const confidence = (leftText && rightText)
+      ? (leftRes.confidence + rightRes.confidence) * 0.5
+      : (leftText ? leftRes.confidence : rightRes.confidence);
+    return { text, confidence };
+  }
+
+  async function recognizeLine(srcCanvas, line, crop, charlist, onProgress, srcImageData, enableTcy) {
+    const aspect = crop.isVertical ? (crop.h / Math.max(1, crop.w)) : (crop.w / Math.max(1, crop.h));
+
+    // Wide horizontal line (>50-char estimate or aspect >= 21): split at clean whitespace valley
+    // so PARSeq-384 achieves 100% accuracy without bundling the 42.6MB PARSeq-768 model.
+    if (!crop.isVertical && srcImageData && crop.w >= 160 && (line.charCount === 1 || aspect >= 21)) {
+      return recognizeLongHorizontalSplit(srcCanvas, srcImageData, line, crop, charlist, onProgress, 0);
+    }
+
+    const { result, model } = await recognizeSingleCrop(srcCanvas, line, crop, charlist, onProgress);
+
+    // Overflow guard: if PARSeq-384 hit near its 50-char cap on a horizontal line, split & re-read
+    if (!crop.isVertical && srcImageData && crop.w >= 160 && model === REC_MEDIUM && result.text.length >= 45) {
+      const splitRes = await recognizeLongHorizontalSplit(srcCanvas, srcImageData, line, crop, charlist, onProgress, 0);
+      if (splitRes.text.length > result.text.length) {
+        return splitRes;
+      }
+    }
+
+    // Zero-overhead Tate-Chuu-Yoko check for vertical columns
+    if (enableTcy !== false && crop.isVertical && srcImageData) {
+      return detectAndFixTateChuYoko(srcCanvas, srcImageData, crop, result, model, charlist, onProgress);
+    }
+
     return result;
   }
 
@@ -869,20 +1331,27 @@
   // -------------------------------------------------------------------------
   /**
    * @param {string} imageDataUrl
-   * @param {{ onProgress?: (status: string, progress: number) => void }} [options]
-   * @returns {Promise<{width:number,height:number,blocks:Array<{text:string,confidence:number,bbox:{x0:number,y0:number,x1:number,y1:number},isMultiLine:boolean,isVertical:boolean}>}>}
+   * @param {{ onProgress?: (status: string, progress: number) => void, characterInclusion?: boolean, enableTcy?: boolean, enableTableStructure?: boolean }} [options]
+   * @returns {Promise<{width:number,height:number,blocks:Array<{text:string,confidence:number,bbox:{x0:number,y0:number,x1:number,y1:number},isMultiLine:boolean,isVertical:boolean,isListItem:boolean,markdownStyle?:number|null}>,tables:Array<object>}>}
    */
   async function recognize(imageDataUrl, options = {}) {
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    const useCharacterInclusion = options.characterInclusion !== false;
+    const useTcy = options.enableTcy !== false;
+    const useTableStructure = options.enableTableStructure !== false;
+
     const charlist = getCharlist();
     const img = await loadImage(imageDataUrl);
     const { canvas: srcCanvas, width, height } = buildSourceCanvas(img);
 
     let lines;
-    // Fast path: if the captured image is a single-line label/snippet (e.g. area-capture of a button, title, or label),
-    // skip the heavy 4-second DEIM detector and recognize directly via PARSeq in ~100ms!
-    const isSingleLineSnippet = (height <= 48 && width >= 14) || (width / height >= 3.5 && height <= 85);
-    if (isSingleLineSnippet) {
+    let tableRegions = [];
+    // Fast path: if the captured image is a single-line horizontal or vertical snippet
+    // (e.g. area-capture of a button, title, label, or single vertical column),
+    // skip the ~4-second DEIM detector and recognize directly via PARSeq in ~150ms!
+    const isSingleHorizSnippet = (height <= 48 && width >= 14) || (width / Math.max(1, height) >= 3.5 && height <= 85);
+    const isSingleVertSnippet = (width <= 48 && height >= 14) || (height / Math.max(1, width) >= 3.5 && width <= 85);
+    if (isSingleHorizSnippet || isSingleVertSnippet) {
       lines = [{
         x0: 0,
         y0: 0,
@@ -890,16 +1359,21 @@
         y1: height,
         classIndex: 1,
         score: 1.0,
-        charCount: null
+        charCount: null,
+        markdownStyle: null
       }];
     } else {
-      if (onProgress) onProgress('detecting text lines (NDLOCR DEIM)', 0);
+      if (onProgress) onProgress('detecting text lines (NDLOCR v2 DEIM)', 0);
       const detections = await detect(srcCanvas, width, height, onProgress);
+      tableRegions = detections
+        .filter((d) => d.classIndex === CLASS_BLOCK_TABLE)
+        .map((d) => ({ bbox: [d.x0, d.y0, d.x1, d.y1], confidence: d.score }));
       lines = sortReadingOrder(selectTextLines(detections));
     }
 
+    // Single reusable ImageData snapshot shared across visual bullet detection, long-line split, and TCY
     let srcImageData = null;
-    if (lines.length > 1) {
+    if (lines.length > 0) {
       try {
         const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
         if (srcCtx) srcImageData = srcCtx.getImageData(0, 0, width, height);
@@ -911,10 +1385,15 @@
     const blocks = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (onProgress) onProgress('recognizing text (NDLOCR PARSeq)', Math.round((i / Math.max(1, lines.length)) * 100));
+      if (onProgress) onProgress('recognizing text (NDLOCR v2 PARSeq)', Math.round((i / Math.max(1, lines.length)) * 100));
       const crop = computeCropRect(line, width, height);
-      const { text: rawText, confidence } = await recognizeLine(srcCanvas, line, crop, charlist, onProgress);
-      const hasTextBullet = LIST_MARKER_REGEX.test(rawText) || LEADING_BULLET_REGEX.test(rawText) || LEADING_ICON_ARTIFACT_REGEX.test(rawText);
+      const { text: recognizedText, confidence } = await recognizeLine(
+        srcCanvas, line, crop, charlist, onProgress, srcImageData, useTcy
+      );
+      const rawText = useCharacterInclusion ? applyCharacterInclusion(recognizedText) : recognizedText;
+      const mdStyle = typeof line.markdownStyle === 'number' ? line.markdownStyle : null;
+      const isMdList = mdStyle === 7 || mdStyle === 8;
+      const hasTextBullet = isMdList || LIST_MARKER_REGEX.test(rawText) || LEADING_BULLET_REGEX.test(rawText) || LEADING_ICON_ARTIFACT_REGEX.test(rawText);
       const text = stripLeadingIconArtifacts(rawText);
       if (confidence < REC_MIN_CONFIDENCE || isNoiseText(text, line, confidence)) continue;
 
@@ -924,23 +1403,41 @@
         x1: Math.round(line.x1),
         y1: Math.round(line.y1)
       };
-      const hasVisualBullet = !hasTextBullet && !crop.isVertical && srcImageData
+      const hasVisualBullet = !hasTextBullet && !crop.isVertical && srcImageData && lines.length > 1
         ? detectVisualBulletLeftOfLine(srcImageData, bbox)
         : false;
 
-      blocks.push({
+      const blk = {
         text,
         confidence: Math.round(confidence * 100),
         bbox,
         isMultiLine: false,
         isVertical: crop.isVertical,
         isListItem: Boolean(hasTextBullet || hasVisualBullet)
-      });
+      };
+      if (mdStyle !== null) blk.markdownStyle = mdStyle;
+      blocks.push(blk);
     }
 
-    return { width, height, blocks };
+    // Lazy TableCenterNet inference ONLY when DEIMv2 detected `block_table` (class 15)
+    let tables = [];
+    if (
+      useTableStructure &&
+      tableRegions.length > 0 &&
+      global.NdlTableEngine &&
+      typeof global.NdlTableEngine.inferTables === 'function'
+    ) {
+      try {
+        tables = await global.NdlTableEngine.inferTables(srcCanvas, width, height, tableRegions, blocks, { onProgress });
+      } catch (err) {
+        console.warn('[NDLOCR] TableCenterNet inference skipped/failed:', err);
+        tables = [];
+      }
+    }
+
+    return { width, height, blocks, tables };
   }
 
-  global.NdlOcrEngine = { recognize, isAvailable, detectVisualBulletLeftOfLine };
+  global.NdlOcrEngine = { recognize, isAvailable, detectVisualBulletLeftOfLine, applyCharacterInclusion, removeAsciiSpacesAroundJapanesePunctuation, findVerticalSplitX };
 })(typeof self !== 'undefined' ? self : window);
 
