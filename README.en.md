@@ -301,7 +301,7 @@ for f in test/test_*.js; do node "$f" || exit 1; done
 
 ## Credits, Links & License
 
-* **Director**: highants
+* **Production Director**: highants
 * **Development**: Antigravity (Google Deepmind)
 * **License**: [MIT License](LICENSE) *(adapted NDLOCR-Lite files such as `ndlocr_engine.js`, `tablecenternet_engine.js`, `vendor/ndlocr/ndl_charlist.js`, and `vendor/ndlocr/ndl_character_inclusion.js` remain governed by CC BY 4.0)*
 * **Built with PLaMo** · **Built with DINOv3** (NDLOCR-Lite layout detection backbone)

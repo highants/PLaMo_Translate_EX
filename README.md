@@ -300,7 +300,7 @@ for f in test/test_*.js; do node "$f" || exit 1; done
 
 ## 関連リンク・クレジット
 
-- **監督**: highants
+- **制作監督**: highants
 - **開発**: Antigravity (Google Deepmind)
 - **ライセンス**: [MIT License](LICENSE)（※`ndlocr_engine.js`, `tablecenternet_engine.js`, `vendor/ndlocr/ndl_charlist.js`, `vendor/ndlocr/ndl_character_inclusion.js` など NDLOCR-Lite 由来の移植・抽出ファイルは元の **CC BY 4.0** 条件に従います）
 - **Built with PLaMo** / **Built with DINOv3**（NDLOCR-Lite レイアウト検出モデルバックボーン）
